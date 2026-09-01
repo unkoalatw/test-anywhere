@@ -137,6 +137,9 @@ body {
 
 .brand-subtitle {
   font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
 /* 雲端同步指示徽章 */
 .cloud-sync-badge {
   display: inline-flex;
