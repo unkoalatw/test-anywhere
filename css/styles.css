@@ -832,8 +832,27 @@ svg.lucide, i[data-lucide] {
   border-radius: var(--radius-sm);
 }
 
-.hidden { display: none !important; }
+.hidden { display: none; }
 .cursor-pointer { cursor: pointer; }
+
+/* 響應式表格與卡片切換保證 (Rock-solid Responsive Table/Card Display) */
+@media (min-width: 768px) {
+  .table-desktop-only {
+    display: block !important;
+  }
+  .cards-mobile-only {
+    display: none !important;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .table-desktop-only {
+    display: none !important;
+  }
+  .cards-mobile-only {
+    display: block !important;
+  }
+}
 
 /* ==========================================================================
    手機版專屬優化 (Mobile Native-Feel Optimization & Touch Enhancements)

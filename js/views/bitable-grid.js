@@ -98,9 +98,9 @@ const BitableGrid = {
       return;
     }
 
-    // 1. 桌面端表格 (Hidden on mobile)
+    // 1. 桌面端表格 (Desktop Table)
     html += `
-      <div class="table-responsive hidden md:block">
+      <div class="table-responsive table-desktop-only">
         <table class="bitable-table">
           <thead>
             <tr>
@@ -184,8 +184,8 @@ const BitableGrid = {
 
     html += `</tbody></table></div>`;
 
-    // 2. 手機版卡片流 (Visible on mobile md:hidden)
-    html += `<div class="mobile-quiz-cards md:hidden space-y-3">`;
+    // 2. 手機版卡片流 (Mobile Cards)
+    html += `<div class="mobile-quiz-cards cards-mobile-only space-y-3">`;
 
     items.forEach(q => {
       const subObj = CONSTANTS.SUBJECTS.find(s => s.id === q.subject) || { name: q.subject, color: '#3B82F6' };
@@ -415,7 +415,7 @@ const BitableGrid = {
 
     // 1. 桌面端表格 (Desktop Table)
     html += `
-      <div class="table-responsive hidden md:block">
+      <div class="table-responsive table-desktop-only">
         <table class="bitable-table">
           <thead>
             <tr>
@@ -542,7 +542,7 @@ const BitableGrid = {
     html += `</tbody></table></div>`;
 
     // 2. 手機版模考卡片流 (Mobile Card List with Keelung-Taipei / City Ranks)
-    html += `<div class="mobile-mock-cards md:hidden space-y-3">`;
+    html += `<div class="mobile-mock-cards cards-mobile-only space-y-3">`;
 
     sorted.forEach(exam => {
       const metrics = ScoringEngine.calculateMockMetrics(exam, currentDistrict);
