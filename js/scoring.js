@@ -1,0 +1,365 @@
+// 國中教育會考計分與診斷運算引擎 (CAP Scoring & Diagnostic Engine)
+const ScoringEngine = {
+  /**
+   * 計算英語加權分數
+   * @param {number} readingCorrect 閱讀答對題數
+   * @param {number} readingTotal 閱讀總題數 (預設 43)
+   * @param {number} listeningCorrect 聽力答對題數
+   * @param {number} listeningTotal 聽力總題數 (預設 21)
+   * @returns {number} 英語加權分數 (滿分 100, 四捨五入至小數第二位)
+   */
+  calcEnglishWeightedScore(readingCorrect, readingTotal = 43, listeningCorrect, listeningTotal = 21) {
+    if (readingCorrect === undefined || readingCorrect === null || listeningCorrect === undefined || listeningCorrect === null) {
+      return null;
+    }
+    const rScore = (Math.max(0, Math.min(readingCorrect, readingTotal)) / readingTotal) * 80;
+    const lScore = (Math.max(0, Math.min(listeningCorrect, listeningTotal)) / listeningTotal) * 20;
+    return Math.round((rScore + lScore) * 100) / 100;
+  },
+
+  /**
+   * 計算數學加權分數
+   * @param {number} choiceCorrect 選擇答對題數
+   * @param {number} choiceTotal 選擇總題數 (預設 25)
+   * @param {number} nonChoiceScore 非選實得分數 (0~6)
+   * @param {number} nonChoiceMax 非選滿分 (預設 6)
+   * @returns {number} 數學加權分數 (滿分 100, 四捨五入至小數第二位)
+   */
+  calcMathWeightedScore(choiceCorrect, choiceTotal = 25, nonChoiceScore, nonChoiceMax = 6) {
+    if (choiceCorrect === undefined || choiceCorrect === null || nonChoiceScore === undefined || nonChoiceScore === null) {
+      return null;
+    }
+    const cScore = (Math.max(0, Math.min(choiceCorrect, choiceTotal)) / choiceTotal) * 85;
+    const ncScore = (Math.max(0, Math.min(nonChoiceScore, nonChoiceMax)) / nonChoiceMax) * 15;
+    return Math.round((cScore + ncScore) * 100) / 100;
+  },
+
+  /**
+   * 取得等級標示的數值權重 (7: A++, 6: A+, 5: A, 4: B++, 3: B+, 2: B, 1: C)
+   * @param {string} notation 等級標示
+   * @returns {number}
+   */
+  getNotationRank(notation) {
+    const map = { 'A++': 7, 'A+': 6, 'A': 5, 'B++': 4, 'B+': 3, 'B': 2, 'C': 1 };
+    return map[notation] || 0;
+  },
+
+  /**
+   * 計算單一模擬考的完整計分指標 (含各考區總分、總積點、會考標籤)
+   * @param {Object} mockExam 模擬考物件
+   * @param {string} district 考區代碼 ('KEELUNG_TAIPEI', 'CENTRAL_TAIWAN', 'KAOHSIUNG', 'GENERAL_TIER')
+   * @returns {Object} 完整運算結果
+   */
+  calculateMockMetrics(mockExam, district = 'KEELUNG_TAIPEI') {
+    const subjects = mockExam.subjects || {};
+    const subCodes = ['CHINESE', 'ENGLISH', 'MATH', 'SOCIAL', 'SCIENCE'];
+
+    let countA = 0;
+    let countB = 0;
+    let countC = 0;
+    let countPlus = 0;
+    let standardPointsSum = 0;
+    let creditsSum = 0;
+    let districtPointsSum = 0;
+
+    const subjectDetail = {};
+
+    subCodes.forEach(code => {
+      const sub = subjects[code] || {};
+      const notation = sub.notation || 'B';
+      const rank = this.getNotationRank(notation);
+
+      // 統計 A/B/C 與 + 數
+      if (notation.startsWith('A')) {
+        countA++;
+        if (notation === 'A++') countPlus += 2;
+        if (notation === 'A+') countPlus += 1;
+      } else if (notation.startsWith('B')) {
+        countB++;
+        if (notation === 'B++') countPlus += 2;
+        if (notation === 'B+') countPlus += 1;
+      } else if (notation === 'C') {
+        countC++;
+      }
+
+      // 標準積點 (基北區 7~1 點)
+      const stdPoints = rank;
+      // 標準積分 (A:6, B:4, C:2)
+      const stdCredits = notation.startsWith('A') ? 6 : notation.startsWith('B') ? 4 : 2;
+
+      standardPointsSum += stdPoints;
+      creditsSum += stdCredits;
+
+      // 考區專屬積點計算
+      if (district === 'CENTRAL_TAIWAN') {
+        // 中投區 A++=21, A+=18, A=15, B++=12, B+=9, B=6, C=3
+        districtPointsSum += rank * 3;
+      } else {
+        // 基北區 / 高雄區
+        districtPointsSum += rank;
+      }
+
+      subjectDetail[code] = {
+        notation,
+        rank,
+        standardPoints: stdPoints,
+        credits: stdCredits
+      };
+    });
+
+    // 寫作測驗處理
+    const writing = subjects.WRITING || {};
+    const writingGrade = writing.isExempt ? 0 : (writing.grade !== undefined && writing.grade !== null ? Number(writing.grade) : 0);
+    const writingConfig = CONSTANTS.WRITING_GRADES.find(g => g.grade === writingGrade) || { pointsKeelungTaipei: 0, creditsKeelungTaipei: 0, pointsCentral: 0 };
+
+    let totalPoints = 0;
+    let totalCredits = 0;
+
+    if (district === 'CENTRAL_TAIWAN') {
+      totalPoints = districtPointsSum + writingConfig.pointsCentral; // 滿分 111 點
+      totalCredits = creditsSum; // 滿分 30 分
+    } else if (district === 'KEELUNG_TAIPEI') {
+      totalPoints = Math.round((districtPointsSum + writingConfig.pointsKeelungTaipei) * 10) / 10; // 滿分 36 點
+      totalCredits = creditsSum + writingConfig.creditsKeelungTaipei; // 滿分 31~36 分
+    } else {
+      // 高雄區 / 通用
+      totalPoints = districtPointsSum;
+      totalCredits = creditsSum;
+    }
+
+    // 格式化標準標記：如 "5A 8+ (作 5 級分)"
+    let summaryTier = '';
+    if (countA > 0) summaryTier += `${countA}A`;
+    if (countB > 0) summaryTier += `${countB}B`;
+    if (countC > 0) summaryTier += `${countC}C`;
+    if (countPlus > 0) summaryTier += ` ${countPlus}+`;
+    if (writingGrade !== null && !writing.isExempt) {
+      summaryTier += ` (作 ${writingGrade} 級分)`;
+    }
+
+    return {
+      summaryTier,
+      countA,
+      countB,
+      countC,
+      countPlus,
+      totalPoints,
+      totalCredits,
+      writingGrade,
+      subjectDetail,
+      district
+    };
+  },
+
+  /**
+   * 目標志願落點診斷 (計算與目標高中門檻差距 Δ)
+   * @param {Object} metrics 本次模考計算指標
+   * @param {Object} targetSchool 目標高中資料物件
+   * @returns {Object} 診斷結果
+   */
+  diagnoseTargetSchool(metrics, targetSchool) {
+    if (!targetSchool) return null;
+
+    const currentPoints = metrics.totalPoints;
+    const cutoffPoints = targetSchool.cutoffPoints;
+    const delta = Math.round((currentPoints - cutoffPoints) * 10) / 10;
+
+    let status = 'COMPETITIVE'; // SAFE, COMPETITIVE, HIGH_RISK
+    let statusText = '落點競爭區間';
+    let statusColor = '#F59E0B'; // Warning yellow
+
+    if (delta >= 0.8) {
+      status = 'SAFE';
+      statusText = '穩健達標 (安全區)';
+      statusColor = '#10B981'; // Green
+    } else if (delta < -0.8) {
+      status = 'HIGH_RISK';
+      statusText = '尚未達標 (待衝刺)';
+      statusColor = '#EF4444'; // Red
+    }
+
+    // 各科標準差距
+    const subjectGaps = {};
+    let subWarningCount = 0;
+
+    if (targetSchool.subjectTargets) {
+      Object.keys(targetSchool.subjectTargets).forEach(subCode => {
+        const targetNotation = targetSchool.subjectTargets[subCode];
+        if (subCode === 'WRITING') {
+          const targetW = Number(targetNotation);
+          const currentW = metrics.writingGrade;
+          subjectGaps[subCode] = {
+            target: `${targetW} 級分`,
+            current: `${currentW} 級分`,
+            isMet: currentW >= targetW,
+            diff: currentW - targetW
+          };
+          if (currentW < targetW) subWarningCount++;
+        } else {
+          const targetRank = this.getNotationRank(targetNotation);
+          const currentDetail = metrics.subjectDetail[subCode] || { rank: 0, notation: 'C' };
+          const currentRank = currentDetail.rank;
+          const isMet = currentRank >= targetRank;
+          if (!isMet) subWarningCount++;
+
+          subjectGaps[subCode] = {
+            target: targetNotation,
+            current: currentDetail.notation,
+            targetRank,
+            currentRank,
+            isMet,
+            rankDiff: currentRank - targetRank
+          };
+        }
+      });
+    }
+
+    return {
+      schoolId: targetSchool.id,
+      schoolName: targetSchool.name,
+      shortName: targetSchool.shortName,
+      cutoffPoints,
+      currentPoints,
+      delta,
+      status,
+      statusText,
+      statusColor,
+      subjectGaps,
+      subWarningCount
+    };
+  },
+
+  /**
+   * 智慧弱點診斷與提分策略引擎
+   * 針對模考與日常小考單元交叉分析，輸出精準提分建議
+   * @param {Object} latestMock 最近一次模考
+   * @param {Array} allQuizzes 所有小考紀錄
+   * @param {Object} targetSchool 第一志願目標學校
+   * @returns {Array} 診斷提分策略清單
+   */
+  generateActionableStrategies(latestMock, allQuizzes = [], targetSchool = null) {
+    const strategies = [];
+    if (!latestMock) return strategies;
+
+    const subjects = latestMock.subjects || {};
+
+    // 1. 英語科閱讀/聽力提分分析
+    const eng = subjects.ENGLISH;
+    if (eng && eng.readingCorrect !== undefined && eng.listeningCorrect !== undefined) {
+      if (eng.notation !== 'A++') {
+        const rWrong = (eng.readingTotal || 43) - eng.readingCorrect;
+        const lWrong = (eng.listeningTotal || 21) - eng.listeningCorrect;
+        
+        if (eng.notation === 'B++' || eng.notation === 'A+') {
+          strategies.push({
+            subject: 'ENGLISH',
+            title: `英語科瓶頸突破 (${eng.notation} ➔ ${eng.notation === 'B++' ? 'A' : 'A++'})`,
+            type: 'quick_jump',
+            severity: 'high',
+            description: `目前英語加權分數 ${eng.weightedScore} 分（閱讀錯 ${rWrong} 題，聽力錯 ${lWrong} 題）。`,
+            actionPlan: `再多對 1~2 題閱讀（加權佔 80%）即可跨過等級門檻！建議加強長篇圖表克漏字與推論題題幹關鍵字抓取。`,
+            icon: 'languages'
+          });
+        }
+      }
+    }
+
+    // 2. 數學科非選/選擇提分分析
+    const math = subjects.MATH;
+    if (math && math.choiceCorrect !== undefined && math.nonChoiceScore !== undefined) {
+      if (math.notation !== 'A++') {
+        const cWrong = (math.choiceTotal || 25) - math.choiceCorrect;
+        const ncScore = math.nonChoiceScore;
+
+        if (ncScore < 5) {
+          strategies.push({
+            subject: 'MATH',
+            title: '數學非選擇題分數提升關鍵',
+            type: 'high_roi',
+            severity: 'high',
+            description: `非選得分為 ${ncScore}/6 分。會考非選 1 分相當於選擇題近 1.5 題加權！`,
+            actionPlan: `非選步驟分掌握：每題列出已知條件、幾何幾何輔助線推導步驟，即使最後計算有誤亦可獲取 2~4 分步驟分。`,
+            icon: 'calculator'
+          });
+        } else if (cWrong > 2) {
+          strategies.push({
+            subject: 'MATH',
+            title: '數學選擇題失分防漏',
+            type: 'accuracy',
+            severity: 'medium',
+            description: `選擇題錯 ${cWrong} 題。`,
+            actionPlan: `建議在歷次模擬考中劃分「前 15 題基礎秒殺區」與「後 10 題素養題」，確保前 15 題 0 粗心失分。`,
+            icon: 'calculator'
+          });
+        }
+      }
+    }
+
+    // 3. 社會科/自然科細項錯題歸納分析
+    ['SOCIAL', 'SCIENCE'].forEach(code => {
+      const sub = subjects[code];
+      if (sub && sub.errorBreakdown) {
+        const eb = sub.errorBreakdown;
+        let maxErrSub = '';
+        let maxCount = 0;
+        Object.keys(eb).forEach(k => {
+          if (eb[k] > maxCount) {
+            maxCount = eb[k];
+            maxErrSub = k;
+          }
+        });
+
+        if (maxCount >= 2) {
+          const subObj = CONSTANTS.SUBJECTS.find(s => s.id === maxErrSub) || { name: maxErrSub };
+          strategies.push({
+            subject: code,
+            title: `${sub.notation} ${code === 'SOCIAL' ? '社會科' : '自然科'} 拖累子科：【${subObj.name}】`,
+            type: 'weak_sub',
+            severity: 'medium',
+            description: `在本次模考中，${subObj.name} 單科貢獻了 ${maxCount} 題錯題，為主要失分核心。`,
+            actionPlan: `建議鎖定 ${subObj.name} 之常考觀念單元進行地毯式錯題重練，可快速拉升大考總答對題數。`,
+            icon: code === 'SOCIAL' ? 'compass' : 'atom'
+          });
+        }
+      }
+    });
+
+    // 4. 小考單元掌握度低於 70% 之 Red Flag (待強化單元)
+    const redFlagQuizzes = allQuizzes.filter(q => (q.score / (q.maxScore || 100)) < 0.7);
+    if (redFlagQuizzes.length > 0) {
+      const groupedBySub = {};
+      redFlagQuizzes.forEach(q => {
+        groupedBySub[q.subject] = (groupedBySub[q.subject] || 0) + 1;
+      });
+
+      const topWeakSub = Object.keys(groupedBySub).sort((a, b) => groupedBySub[b] - groupedBySub[a])[0];
+      const weakSubObj = CONSTANTS.SUBJECTS.find(s => s.id === topWeakSub) || { name: topWeakSub };
+
+      strategies.push({
+        subject: topWeakSub,
+        title: `小考章節漏洞預警：${weakSubObj.name} (累計 ${groupedBySub[topWeakSub]} 次未達 70%)`,
+        type: 'unit_gap',
+        severity: 'high',
+        description: `平常隨堂小考在 ${weakSubObj.name} 多個單元掌握度偏低，若不加強將直接反映在大範圍會考題。`,
+        actionPlan: `查看多維表格「錯題筆記畫廊」或看板「待加強複習」，依單元標籤進行二度補測。`,
+        icon: 'alert-triangle'
+      });
+    }
+
+    // 5. 寫作測驗
+    const writing = subjects.WRITING || {};
+    if (!writing.isExempt && writing.grade < 5) {
+      strategies.push({
+        subject: 'WRITING',
+        title: '寫作測驗 5 級分衝刺',
+        type: 'writing_upgrade',
+        severity: 'medium',
+        description: `當前作文為 ${writing.grade || 4} 級分。在基北區與中投區超額比序中，作文級分為關鍵決勝分。`,
+        actionPlan: `段落四段式佈局：破題引導 ➔ 個人生命經驗具體事例 ➔ 轉折思辨反思 ➔ 昇華總結。每週限時 50 分鐘手寫一篇。`,
+        icon: 'pen-tool'
+      });
+    }
+
+    return strategies;
+  }
+};

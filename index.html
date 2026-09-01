@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  
+  <!-- PWA Meta 標籤 -->
+  <title>學業成績智慧彙整與多維分析系統 | 國中教育會考落點診斷</title>
+  <meta name="description" content="專為中學升學考生打造的個人化學業成績管理與會考診斷多維分析平台，支援飛書多維表格視圖、英數加權運算、就學區積點與志願落點診斷。" />
+  <meta name="theme-color" content="#0B0D11" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CAP多維分析" />
+  
+  <!-- Web App Manifest & App Icons -->
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="apple-touch-icon" href="./icons/icon.svg" />
+
+  <!-- Tailwind CSS (用於極速響應式 Flex/Grid 佈局) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            canvas: '#0B0D11',
+            surface: '#12151D',
+            card: '#161922',
+            border: 'rgba(255, 255, 255, 0.08)',
+            'primary-blue': '#3B82F6',
+            'primary-purple': '#8B5CF6',
+            success: '#10B981',
+            warning: '#F59E0B',
+            danger: '#EF4444'
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- Lucide Icons & Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- 客製化深色精緻介面樣式 -->
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body class="bg-[#0B0D11] text-[#F3F4F6]">
+
+  <div class="app-container">
+    
+    <!-- 頂部主導覽列 -->
+    <header class="app-navbar">
+      <div class="brand-container">
+        <img src="./icons/icon.svg" alt="CAP Tracker" class="brand-logo shadow-sm" />
+        <div>
+          <h1 class="brand-title">學業成績智慧彙整系統</h1>
+          <p class="brand-subtitle">國中會考計分規範 • 多維表格分析</p>
+        </div>
+      </div>
+
+      <!-- 學生簡歷與全域功能列 -->
+      <div class="flex items-center gap-3">
+        <!-- 學生檔案標籤 -->
+        <div class="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-surface border border-border cursor-pointer hover:border-primary-blue/40 transition-colors" onclick="App.openSettingsModal()" title="點擊編輯個人檔案與設定">
+          <div class="w-6 h-6 rounded-full bg-primary-blue/20 text-primary-blue flex items-center justify-center font-bold text-xs">
+            <i data-lucide="user" class="w-3.5 h-3.5"></i>
+          </div>
+          <div>
+            <div id="header-student-name" class="text-xs font-bold text-primary">考生檔案</div>
+            <div id="header-school-info" class="text-3xs text-muted">點擊設定填寫基本資料</div>
+          </div>
+        </div>
+
+        <!-- PWA 安裝按鈕 (預設隱藏，符合條件自動觸發) -->
+        <button id="btn-pwa-install" class="btn-secondary text-xs hidden items-center gap-1.5" onclick="App.installPWA()">
+          <i data-lucide="download" class="w-3.5 h-3.5 text-primary-blue"></i>
+          <span>安裝 App</span>
+        </button>
+
+        <!-- 列印 / 匯出 PDF 診斷書 -->
+        <button class="btn-secondary text-xs" title="列印 / 產生會考診斷報告書" onclick="ExportImport.printDiagnosticReport()">
+          <i data-lucide="printer" class="w-3.5 h-3.5 inline mr-1 text-secondary"></i>
+          <span class="hidden md:inline">列印報告</span>
+        </button>
+
+        <!-- GAS 雲端同步與設定 -->
+        <button class="btn-secondary text-xs" title="Google Apps Script 雲端同步設定" onclick="App.openSettingsModal()">
+          <i data-lucide="cloud" class="w-3.5 h-3.5 inline mr-1 text-primary-blue"></i>
+          <span class="hidden md:inline">雲端同步</span>
+        </button>
+
+        <!-- 快速錄入成績主要按鈕 -->
+        <button class="btn-primary text-xs" onclick="App.openQuickAddModal()">
+          <i data-lucide="plus" class="w-3.5 h-3.5 inline mr-1"></i>
+          <span>錄入成績</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 次導覽列：模組切換 (Module Tabs) 與 多維視圖切換 (View Tabs) -->
+    <nav class="sub-navbar">
+      
+      <!-- 評量模組切換 -->
+      <div class="flex items-center gap-2">
+        <span class="text-2xs text-muted font-medium hidden lg:inline">評量模組：</span>
+        <div class="module-tabs">
+          <button class="module-tab-btn active" data-module="mock" onclick="App.switchModule('mock')">
+            <i data-lucide="target" class="w-3.5 h-3.5"></i>
+            <span>會考模擬考</span>
+          </button>
+          <button class="module-tab-btn" data-module="term" onclick="App.switchModule('term')">
+            <i data-lucide="award" class="w-3.5 h-3.5"></i>
+            <span>定期段考</span>
+          </button>
+          <button class="module-tab-btn" data-module="quiz" onclick="App.switchModule('quiz')">
+            <i data-lucide="file-check" class="w-3.5 h-3.5"></i>
+            <span>小考評量</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 飛書多維表格視圖切換 -->
+      <div class="flex items-center gap-2">
+        <span class="text-2xs text-muted font-medium hidden lg:inline">多維視圖：</span>
+        <div class="view-tabs">
+          <button class="view-tab-btn active" data-view="dashboard" onclick="App.switchView('dashboard')">
+            <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>
+            <span>戰情儀表板</span>
+          </button>
+          <button class="view-tab-btn" data-view="grid" onclick="App.switchView('grid')">
+            <i data-lucide="table" class="w-3.5 h-3.5"></i>
+            <span>表格視圖</span>
+          </button>
+          <button class="view-tab-btn" data-view="kanban" onclick="App.switchView('kanban')">
+            <i data-lucide="kanban-square" class="w-3.5 h-3.5"></i>
+            <span>掌握度看板</span>
+          </button>
+          <button class="view-tab-btn" data-view="gallery" onclick="App.switchView('gallery')">
+            <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+            <span>錯題筆記畫廊</span>
+          </button>
+        </div>
+      </div>
+
+    </nav>
+
+    <!-- 主要視圖渲染區域 -->
+    <main class="main-content">
+      <div id="view-content-area">
+        <!-- 視圖由 JavaScript 動態渲染 -->
+      </div>
+    </main>
+
+    <!-- 手機版專屬底部導覽列 (Mobile Bottom Navigation Bar) -->
+    <nav class="mobile-bottom-nav md:hidden">
+      <button class="mobile-nav-btn active" data-view="dashboard" onclick="App.switchView('dashboard')">
+        <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+        <span>戰情</span>
+      </button>
+      <button class="mobile-nav-btn" data-view="grid" onclick="App.switchView('grid')">
+        <i data-lucide="table" class="w-5 h-5"></i>
+        <span>表格</span>
+      </button>
+      <button class="mobile-nav-btn mobile-fab-center" onclick="App.openQuickAddModal()" title="快速錄入成績">
+        <div class="fab-circle">
+          <i data-lucide="plus" class="w-6 h-6"></i>
+        </div>
+        <span>錄入</span>
+      </button>
+      <button class="mobile-nav-btn" data-view="kanban" onclick="App.switchView('kanban')">
+        <i data-lucide="kanban-square" class="w-5 h-5"></i>
+        <span>看板</span>
+      </button>
+      <button class="mobile-nav-btn" data-view="gallery" onclick="App.switchView('gallery')">
+        <i data-lucide="book-open" class="w-5 h-5"></i>
+        <span>錯題</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- 彈窗渲染宿主容器 -->
+  <div id="modal-host"></div>
+
+  <!-- Toast 訊息提示容器 -->
+  <div id="toast-container"></div>
+
+  <!-- 核心腳本載入順序 (含版本防快取) -->
+  <script src="./js/constants.js?v=2"></script>
+  <script src="./js/scoring.js?v=2"></script>
+  <script src="./js/db.js?v=2"></script>
+  <script src="./js/charts.js?v=2"></script>
+  <script src="./js/views/bitable-grid.js?v=2"></script>
+  <script src="./js/views/bitable-kanban.js?v=2"></script>
+  <script src="./js/views/bitable-dashboard.js?v=2"></script>
+  <script src="./js/views/bitable-gallery.js?v=2"></script>
+  <script src="./js/gas-sync.js?v=2"></script>
+  <script src="./js/export-import.js?v=2"></script>
+  <script src="./js/app.js?v=2"></script>
+
+</body>
+</html>

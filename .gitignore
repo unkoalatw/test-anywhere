@@ -1,0 +1,9 @@
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Optional local test scripts
+tests/

@@ -1,0 +1,1140 @@
+// 學業成績智慧彙整與多維分析系統 - 主控制器 (Main Application Controller)
+const App = {
+  currentModule: 'mock', // 'mock', 'term', 'quiz'
+  currentView: 'dashboard', // 'dashboard', 'grid', 'kanban', 'gallery'
+  activeModal: null,
+  cachedData: {
+    quizzes: [],
+    termExams: [],
+    mockExams: [],
+    targetSchools: [],
+    settings: {}
+  },
+  deferredInstallPrompt: null,
+
+  async init() {
+    console.log('Initializing Academic Tracker System...');
+    
+    // 1. 初始化本地資料庫 (IndexedDB / LocalStorage)
+    await DB.init();
+    await this.loadAllData();
+
+    // 2. 註冊資料變更事件監聽
+    DB.subscribe(async (event) => {
+      console.log('DB Event received:', event);
+      await this.loadAllData();
+      this.refreshCurrentView();
+    });
+
+    // 3. 註冊 PWA 安裝提示事件
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      this.deferredInstallPrompt = e;
+      const installBtn = document.getElementById('btn-pwa-install');
+      if (installBtn) installBtn.style.display = 'inline-flex';
+    });
+
+    // 4. 註冊 Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js')
+        .then(() => console.log('Service Worker registered successfully'))
+        .catch(err => console.warn('Service Worker registration failed:', err));
+    }
+
+    // 5. 渲染初始畫面
+    this.setupEventListeners();
+    this.refreshCurrentView();
+    if (window.lucide) lucide.createIcons();
+  },
+
+  async loadAllData() {
+    const [quizzes, termExams, mockExams, targetSchools, settings] = await Promise.all([
+      DB.getAll('quizzes'),
+      DB.getAll('termExams'),
+      DB.getAll('mockExams'),
+      DB.getAll('targetSchools'),
+      DB.get('settings', 'main')
+    ]);
+
+    this.cachedData = {
+      quizzes: quizzes || [],
+      termExams: termExams || [],
+      mockExams: mockExams || [],
+      targetSchools: targetSchools && targetSchools.length > 0 ? targetSchools : CONSTANTS.TARGET_SCHOOLS_DB,
+      settings: settings || SEED_DATA.settings
+    };
+
+    // 更新使用者標題
+    this.updateUserHeader();
+  },
+
+  updateUserHeader() {
+    const st = this.cachedData.settings || {};
+    const nameEl = document.getElementById('header-student-name');
+    const schEl = document.getElementById('header-school-info');
+    if (nameEl) nameEl.textContent = st.studentName ? st.studentName : '考生檔案';
+    if (schEl) {
+      if (st.schoolName || st.gradeClass) {
+        schEl.textContent = [st.schoolName, st.gradeClass].filter(Boolean).join(' • ');
+      } else {
+        schEl.textContent = '點擊設定填寫基本資料';
+      }
+    }
+  },
+
+  setupEventListeners() {
+    // 監聽鍵盤 ESC 關閉 Modal
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.activeModal) {
+        this.closeModal();
+      }
+    });
+  },
+
+  /**
+   * 切換主模組 (模考 / 段考 / 小考)
+   */
+  switchModule(moduleId) {
+    this.currentModule = moduleId;
+    
+    // 如果當前在 Dashboard 且使用者切換了特定評量模組，自動切換至該模組的表格視圖
+    if (this.currentView === 'dashboard') {
+      this.currentView = 'grid';
+      document.querySelectorAll('.view-tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === 'grid');
+      });
+    }
+
+    // 更新按鈕樣式
+    document.querySelectorAll('.module-tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.module === moduleId);
+    });
+
+    this.refreshCurrentView();
+  },
+
+  /**
+   * 切換多維表格視圖 (Dashboard / Grid / Kanban / Gallery)
+   */
+  switchView(viewId) {
+    this.currentView = viewId;
+
+    // 更新視圖按鈕樣式 (頂部按鈕 + 手機版底部導覽按鈕)
+    document.querySelectorAll('.view-tab-btn, .mobile-nav-btn').forEach(btn => {
+      if (btn.dataset.view) {
+        btn.classList.toggle('active', btn.dataset.view === viewId);
+      }
+    });
+
+    this.refreshCurrentView();
+  },
+
+  /**
+   * 根據當前選取的模組與視圖重新渲染主畫面
+   */
+  refreshCurrentView() {
+    const mainContainer = document.getElementById('view-content-area');
+    if (!mainContainer) return;
+
+    const { quizzes, termExams, mockExams, targetSchools, settings } = this.cachedData;
+
+    // 1. 儀表板視圖
+    if (this.currentView === 'dashboard') {
+      BitableDashboard.renderDashboard('view-content-area', this.cachedData);
+      return;
+    }
+
+    // 2. 看板視圖
+    if (this.currentView === 'kanban') {
+      BitableKanban.renderKanban('view-content-area', quizzes, mockExams);
+      return;
+    }
+
+    // 3. 錯題筆記畫廊視圖
+    if (this.currentView === 'gallery') {
+      BitableGallery.renderGallery('view-content-area', quizzes);
+      return;
+    }
+
+    // 4. 表格視圖 (依照當前模組渲染)
+    if (this.currentView === 'grid') {
+      if (this.currentModule === 'mock') {
+        BitableGrid.renderMockExamGrid('view-content-area', mockExams, settings.district || 'KEELUNG_TAIPEI');
+      } else if (this.currentModule === 'term') {
+        BitableGrid.renderTermExamGrid('view-content-area', termExams);
+      } else if (this.currentModule === 'quiz') {
+        BitableGrid.renderQuizGrid('view-content-area', quizzes);
+      }
+    }
+  },
+
+  /**
+   * 快速新增資料分發 (點擊右上角新增按鈕)
+   */
+  openQuickAddModal() {
+    if (this.currentModule === 'mock') {
+      this.openMockModal();
+    } else if (this.currentModule === 'term') {
+      this.openTermModal();
+    } else {
+      this.openQuizModal();
+    }
+  },
+
+  // ==========================================
+  // 1. 模擬考 10 秒快速點選錄入彈窗
+  // ==========================================
+  openMockModal(editId = null) {
+    const isEdit = Boolean(editId);
+    const item = isEdit ? this.cachedData.mockExams.find(m => m.id === editId) : null;
+    const sub = (item && item.subjects) || {};
+
+    const chNotation = (sub.CHINESE && sub.CHINESE.notation) || 'A';
+    const enNotation = (sub.ENGLISH && sub.ENGLISH.notation) || 'A';
+    const maNotation = (sub.MATH && sub.MATH.notation) || 'A';
+    const soNotation = (sub.SOCIAL && sub.SOCIAL.notation) || 'A';
+    const scNotation = (sub.SCIENCE && sub.SCIENCE.notation) || 'A';
+    const wrGrade = (sub.WRITING && sub.WRITING.grade !== undefined) ? sub.WRITING.grade : 5;
+
+    const modalHtml = `
+      <div class="modal-backdrop" onclick="App.closeModal(event)">
+        <div class="modal-card modal-lg" onclick="event.stopPropagation()">
+          <div class="modal-header flex items-center justify-between pb-3 border-b border-border">
+            <div class="flex items-center gap-2">
+              <i data-lucide="target" class="w-5 h-5 text-primary-blue"></i>
+              <h3 class="font-bold text-base text-primary">${isEdit ? '編輯會考模擬考紀錄' : '會考模擬考 10 秒快速點選錄入'}</h3>
+            </div>
+            <button class="btn-icon" onclick="App.closeModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+
+          <form id="form-mock-exam" onsubmit="App.saveMockExam(event, '${editId || ''}')" class="modal-body py-4 space-y-4 max-h-[78vh] overflow-y-auto">
+            
+            <!-- 基礎資訊 -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="form-label">考次名稱 / 梯次 *</label>
+                <input type="text" id="mock-title" required class="form-input" value="${item ? item.title : '114學年度 第 4 次國中教育會考全模'}" placeholder="如：114-1 全國模擬考" />
+              </div>
+              <div>
+                <label class="form-label">測驗日期 *</label>
+                <input type="date" id="mock-date" required class="form-input" value="${item ? item.date : new Date().toISOString().slice(0, 10)}" />
+              </div>
+              <div>
+                <label class="form-label">主辦單位 / 卷別</label>
+                <select id="mock-organizer" class="form-input">
+                  ${CONSTANTS.MOCK_ORGANIZERS.map(org => `<option value="${org}" ${item && item.organizer === org ? 'selected' : ''}>${org}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="form-label">測驗範圍</label>
+                <select id="mock-scope" class="form-input">
+                  ${CONSTANTS.MOCK_SCOPES.map(sc => `<option value="${sc}" ${item && item.scope === sc ? 'selected' : ''}>${sc}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="form-label">計分考區</label>
+                <select id="mock-district" class="form-input" onchange="App.onFastEntryRecalculate()">
+                  ${CONSTANTS.DISTRICT_MODELS.map(d => `<option value="${d.id}" ${item && item.district === d.id ? 'selected' : (this.cachedData.settings.district === d.id ? 'selected' : '')}>${d.name}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <!-- 5 科等級點選矩陣 (Matrix Selector) -->
+            <div class="border border-border/80 rounded-lg p-3 bg-surface/50 space-y-3">
+              <div class="text-xs font-bold text-secondary flex items-center justify-between">
+                <span>🎯 五大考科等級矩陣一鍵點選</span>
+                <span class="text-2xs text-muted font-normal">點選對應等級即可極速換算</span>
+              </div>
+
+              <!-- 國文 -->
+              <div class="subject-entry-row p-2.5 rounded-lg bg-card/70 border border-border/50">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <span class="font-bold text-xs text-primary">國文科</span>
+                  <input type="number" id="mock-ch-correct" class="form-input-inline w-24 text-xs text-right" placeholder="答對題數(42)" value="${sub.CHINESE && sub.CHINESE.rawCorrect !== undefined ? sub.CHINESE.rawCorrect : ''}" min="0" max="42" />
+                </div>
+                <div class="matrix-btn-group" data-subject="CHINESE">
+                  ${this.renderNotationButtons('CHINESE', chNotation)}
+                </div>
+              </div>
+
+              <!-- 英語 (含聽力與閱讀加權計算) -->
+              <div class="subject-entry-row p-2.5 rounded-lg bg-card/70 border border-border/50">
+                <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-bold text-xs text-primary">英語科</span>
+                    <span id="mock-en-weighted-preview" class="text-primary-blue font-mono font-bold text-2xs"></span>
+                  </div>
+                  <div class="flex items-center gap-1.5 text-2xs">
+                    <input type="number" id="mock-en-reading" class="form-input-inline w-16 text-xs text-right" placeholder="閱(43)" value="${sub.ENGLISH && sub.ENGLISH.readingCorrect !== undefined ? sub.ENGLISH.readingCorrect : ''}" min="0" max="43" oninput="App.onFastEntryRecalculate()" />
+                    <input type="number" id="mock-en-listening" class="form-input-inline w-16 text-xs text-right" placeholder="聽(21)" value="${sub.ENGLISH && sub.ENGLISH.listeningCorrect !== undefined ? sub.ENGLISH.listeningCorrect : ''}" min="0" max="21" oninput="App.onFastEntryRecalculate()" />
+                  </div>
+                </div>
+                <div class="matrix-btn-group" data-subject="ENGLISH">
+                  ${this.renderNotationButtons('ENGLISH', enNotation)}
+                </div>
+              </div>
+
+              <!-- 數學 (含選擇與非選加權計算) -->
+              <div class="subject-entry-row p-2.5 rounded-lg bg-card/70 border border-border/50">
+                <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                  <div class="flex items-center gap-1.5">
+                    <span class="font-bold text-xs text-primary">數學科</span>
+                    <span id="mock-ma-weighted-preview" class="text-primary-purple font-mono font-bold text-2xs"></span>
+                  </div>
+                  <div class="flex items-center gap-1.5 text-2xs">
+                    <input type="number" id="mock-ma-choice" class="form-input-inline w-16 text-xs text-right" placeholder="選(25)" value="${sub.MATH && sub.MATH.choiceCorrect !== undefined ? sub.MATH.choiceCorrect : ''}" min="0" max="25" oninput="App.onFastEntryRecalculate()" />
+                    <input type="number" id="mock-ma-nonchoice" class="form-input-inline w-16 text-xs text-right" placeholder="非選(6)" value="${sub.MATH && sub.MATH.nonChoiceScore !== undefined ? sub.MATH.nonChoiceScore : ''}" min="0" max="6" step="0.5" oninput="App.onFastEntryRecalculate()" />
+                  </div>
+                </div>
+                <div class="matrix-btn-group" data-subject="MATH">
+                  ${this.renderNotationButtons('MATH', maNotation)}
+                </div>
+              </div>
+
+              <!-- 社會 -->
+              <div class="subject-entry-row p-2.5 rounded-lg bg-card/70 border border-border/50">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <span class="font-bold text-xs text-primary">社會科</span>
+                  <input type="number" id="mock-so-correct" class="form-input-inline w-24 text-xs text-right" placeholder="答對題數(54)" value="${sub.SOCIAL && sub.SOCIAL.rawCorrect !== undefined ? sub.SOCIAL.rawCorrect : ''}" min="0" max="54" />
+                </div>
+                <div class="matrix-btn-group" data-subject="SOCIAL">
+                  ${this.renderNotationButtons('SOCIAL', soNotation)}
+                </div>
+              </div>
+
+              <!-- 自然 -->
+              <div class="subject-entry-row p-2.5 rounded-lg bg-card/70 border border-border/50">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <span class="font-bold text-xs text-primary">自然科</span>
+                  <input type="number" id="mock-sc-correct" class="form-input-inline w-24 text-xs text-right" placeholder="答對題數(50)" value="${sub.SCIENCE && sub.SCIENCE.rawCorrect !== undefined ? sub.SCIENCE.rawCorrect : ''}" min="0" max="50" />
+                </div>
+                <div class="matrix-btn-group" data-subject="SCIENCE">
+                  ${this.renderNotationButtons('SCIENCE', scNotation)}
+                </div>
+              </div>
+
+              <!-- 寫作測驗 -->
+              <div class="subject-entry-row p-2.5 rounded-lg bg-card/70 border border-border/50">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <span class="font-bold text-xs text-primary">寫作測驗</span>
+                  <span class="text-3xs text-muted">0 ~ 6 級分</span>
+                </div>
+                <div class="writing-btn-group">
+                  ${[6, 5, 4, 3, 2, 1, 0].map(g => `
+                    <button type="button" class="btn-tier ${wrGrade === g ? 'active' : ''}" data-grade="${g}" onclick="App.selectWritingGrade(${g})">
+                      ${g}級
+                    </button>
+                  `).join('')}
+                </div>
+                <input type="hidden" id="mock-writing-grade" value="${wrGrade}" />
+              </div>
+
+            </div>
+
+            <!-- 即時動態計分預覽條 -->
+            <div id="fast-entry-summary-bar" class="p-3 rounded-lg bg-primary-blue/10 border border-primary-blue/30 flex items-center justify-between text-xs">
+              <div class="flex items-center gap-2">
+                <i data-lucide="zap" class="w-4 h-4 text-warning"></i>
+                <span class="text-secondary">即時運算：</span>
+                <b id="preview-summary-tier" class="text-success font-bold font-mono text-sm">5A 8+</b>
+              </div>
+              <div class="flex items-center gap-3">
+                <span>總積點：<b id="preview-total-points" class="text-primary-blue font-bold font-mono text-sm">34.8 點</b></span>
+                <span>總積分：<b id="preview-total-credits" class="text-primary font-bold font-mono text-sm">36 分</b></span>
+              </div>
+            </div>
+
+            <!-- 策略備註 -->
+            <div>
+              <label class="form-label">模考總結與弱點筆記</label>
+              <textarea id="mock-notes" class="form-input" rows="2" placeholder="紀錄本次模考失分原因、非選步驟、時間分配心得...">${item ? (item.notes || '') : ''}</textarea>
+            </div>
+
+            <div class="modal-footer flex items-center justify-end gap-3 pt-3 border-t border-border">
+              <button type="button" class="btn-secondary" onclick="App.closeModal()">取消</button>
+              <button type="submit" class="btn-primary">儲存模考紀錄</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    this.renderModal(modalHtml);
+    this.onFastEntryRecalculate();
+  },
+
+  renderNotationButtons(subjectCode, currentNotation) {
+    const notations = ['A++', 'A+', 'A', 'B++', 'B+', 'B', 'C'];
+    return notations.map(not => {
+      const isSelected = not === currentNotation;
+      return `
+        <button type="button" class="btn-tier ${isSelected ? 'active' : ''}" data-subject="${subjectCode}" data-notation="${not}" onclick="App.selectNotation('${subjectCode}', '${not}')">
+          ${not}
+        </button>
+      `;
+    }).join('');
+  },
+
+  selectNotation(subjectCode, notation) {
+    const group = document.querySelector(`.matrix-btn-group[data-subject="${subjectCode}"]`);
+    if (group) {
+      group.querySelectorAll('.btn-tier').forEach(b => {
+        b.classList.toggle('active', b.dataset.notation === notation);
+      });
+    }
+    this.onFastEntryRecalculate();
+  },
+
+  selectWritingGrade(grade) {
+    const input = document.getElementById('mock-writing-grade');
+    if (input) input.value = grade;
+    document.querySelectorAll('.writing-btn-group .btn-tier').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.grade) === grade);
+    });
+    this.onFastEntryRecalculate();
+  },
+
+  onFastEntryRecalculate() {
+    const getSubNotation = (code) => {
+      const activeBtn = document.querySelector(`.matrix-btn-group[data-subject="${code}"] .btn-tier.active`);
+      return activeBtn ? activeBtn.dataset.notation : 'B';
+    };
+
+    // 英語加權
+    const rCor = document.getElementById('mock-en-reading')?.value;
+    const lCor = document.getElementById('mock-en-listening')?.value;
+    const enWScore = ScoringEngine.calcEnglishWeightedScore(
+      rCor !== '' && rCor !== undefined ? Number(rCor) : null,
+      43,
+      lCor !== '' && lCor !== undefined ? Number(lCor) : null,
+      21
+    );
+    const enWPreview = document.getElementById('mock-en-weighted-preview');
+    if (enWPreview) enWPreview.textContent = enWScore !== null ? `加權 ${enWScore}分` : '';
+
+    // 數學加權
+    const cCor = document.getElementById('mock-ma-choice')?.value;
+    const ncScore = document.getElementById('mock-ma-nonchoice')?.value;
+    const maWScore = ScoringEngine.calcMathWeightedScore(
+      cCor !== '' && cCor !== undefined ? Number(cCor) : null,
+      25,
+      ncScore !== '' && ncScore !== undefined ? Number(ncScore) : null,
+      6
+    );
+    const maWPreview = document.getElementById('mock-ma-weighted-preview');
+    if (maWPreview) maWPreview.textContent = maWScore !== null ? `加權 ${maWScore}分` : '';
+
+    const district = document.getElementById('mock-district')?.value || 'KEELUNG_TAIPEI';
+    const writingGrade = Number(document.getElementById('mock-writing-grade')?.value || 5);
+
+    const tempMock = {
+      subjects: {
+        CHINESE: { notation: getSubNotation('CHINESE') },
+        ENGLISH: { notation: getSubNotation('ENGLISH') },
+        MATH: { notation: getSubNotation('MATH') },
+        SOCIAL: { notation: getSubNotation('SOCIAL') },
+        SCIENCE: { notation: getSubNotation('SCIENCE') },
+        WRITING: { grade: writingGrade }
+      }
+    };
+
+    const metrics = ScoringEngine.calculateMockMetrics(tempMock, district);
+
+    const tierEl = document.getElementById('preview-summary-tier');
+    const ptsEl = document.getElementById('preview-total-points');
+    const crEl = document.getElementById('preview-total-credits');
+
+    if (tierEl) tierEl.textContent = metrics.summaryTier;
+    if (ptsEl) ptsEl.textContent = `${metrics.totalPoints} 點`;
+    if (crEl) crEl.textContent = `${metrics.totalCredits} 分`;
+  },
+
+  async saveMockExam(event, editId) {
+    event.preventDefault();
+    const getSubNotation = (code) => {
+      const activeBtn = document.querySelector(`.matrix-btn-group[data-subject="${code}"] .btn-tier.active`);
+      return activeBtn ? activeBtn.dataset.notation : 'B';
+    };
+
+    const rCor = document.getElementById('mock-en-reading').value;
+    const lCor = document.getElementById('mock-en-listening').value;
+    const enWScore = ScoringEngine.calcEnglishWeightedScore(
+      rCor ? Number(rCor) : null, 43, lCor ? Number(lCor) : null, 21
+    );
+
+    const cCor = document.getElementById('mock-ma-choice').value;
+    const ncScore = document.getElementById('mock-ma-nonchoice').value;
+    const maWScore = ScoringEngine.calcMathWeightedScore(
+      cCor ? Number(cCor) : null, 25, ncScore ? Number(ncScore) : null, 6
+    );
+
+    const chCor = document.getElementById('mock-ch-correct').value;
+    const soCor = document.getElementById('mock-so-correct').value;
+    const scCor = document.getElementById('mock-sc-correct').value;
+
+    const mockItem = {
+      id: editId || `me_${Date.now()}`,
+      title: document.getElementById('mock-title').value,
+      date: document.getElementById('mock-date').value,
+      organizer: document.getElementById('mock-organizer').value,
+      scope: document.getElementById('mock-scope').value,
+      district: document.getElementById('mock-district').value,
+      subjects: {
+        CHINESE: { notation: getSubNotation('CHINESE'), rawCorrect: chCor ? Number(chCor) : undefined },
+        ENGLISH: { notation: getSubNotation('ENGLISH'), readingCorrect: rCor ? Number(rCor) : undefined, listeningCorrect: lCor ? Number(lCor) : undefined, weightedScore: enWScore },
+        MATH: { notation: getSubNotation('MATH'), choiceCorrect: cCor ? Number(cCor) : undefined, nonChoiceScore: ncScore ? Number(ncScore) : undefined, weightedScore: maWScore },
+        SOCIAL: { notation: getSubNotation('SOCIAL'), rawCorrect: soCor ? Number(soCor) : undefined },
+        SCIENCE: { notation: getSubNotation('SCIENCE'), rawCorrect: scCor ? Number(scCor) : undefined },
+        WRITING: { grade: Number(document.getElementById('mock-writing-grade').value || 5) }
+      },
+      notes: document.getElementById('mock-notes').value
+    };
+
+    await DB.put('mockExams', mockItem);
+    this.closeModal();
+    this.showToast('會考模擬考成績儲存成功！', 'success');
+  },
+
+  // ==========================================
+  // 2. 小考評量錄入彈窗
+  // ==========================================
+  openQuizModal(editId = null) {
+    const isEdit = Boolean(editId);
+    const item = isEdit ? this.cachedData.quizzes.find(q => q.id === editId) : null;
+    const selectedTags = (item && item.errorTags) || [];
+
+    const modalHtml = `
+      <div class="modal-backdrop" onclick="App.closeModal(event)">
+        <div class="modal-card modal-md" onclick="event.stopPropagation()">
+          <div class="modal-header flex items-center justify-between pb-3 border-b border-border">
+            <div class="flex items-center gap-2">
+              <i data-lucide="file-check" class="w-5 h-5 text-primary-purple"></i>
+              <h3 class="font-bold text-base text-primary">${isEdit ? '編輯小考評量' : '新增小考評量紀錄'}</h3>
+            </div>
+            <button class="btn-icon" onclick="App.closeModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+
+          <form id="form-quiz" onsubmit="App.saveQuiz(event, '${editId || ''}')" class="modal-body py-4 space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="form-label">測驗日期 *</label>
+                <input type="date" id="quiz-date" required class="form-input" value="${item ? item.date : new Date().toISOString().slice(0, 10)}" />
+              </div>
+              <div>
+                <label class="form-label">學科領域 (9大考科) *</label>
+                <select id="quiz-subject" class="form-input" required>
+                  ${CONSTANTS.SUBJECTS.map(s => `<option value="${s.id}" ${item && item.subject === s.id ? 'selected' : ''}>${s.name} (${s.group})</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div class="sm:col-span-2">
+                <label class="form-label">單元 / 章節名稱 *</label>
+                <input type="text" id="quiz-unit" required class="form-input" value="${item ? item.unitName : ''}" placeholder="如：第 2 章 直角坐標與二元一次方程式" />
+              </div>
+              <div>
+                <label class="form-label">測驗類型</label>
+                <select id="quiz-type" class="form-input">
+                  ${CONSTANTS.QUIZ_TYPES.map(t => `<option value="${t}" ${item && item.quizType === t ? 'selected' : ''}>${t}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="form-label">個人得分 *</label>
+                <input type="number" id="quiz-score" required class="form-input" min="0" max="100" step="0.5" value="${item ? item.score : ''}" placeholder="如: 85" />
+              </div>
+              <div>
+                <label class="form-label">滿分標準</label>
+                <input type="number" id="quiz-max-score" class="form-input" value="${item ? item.maxScore : 100}" />
+              </div>
+            </div>
+
+            <!-- 錯題歸因標籤 (Multi-Select) -->
+            <div>
+              <label class="form-label">錯題歸因標籤 (可複選)</label>
+              <div class="flex flex-wrap gap-1.5 p-2 rounded-lg bg-surface/50 border border-border">
+                ${CONSTANTS.ERROR_TAGS.map(t => {
+                  const isChecked = selectedTags.includes(t.id);
+                  return `
+                    <label class="tag-checkbox-label">
+                      <input type="checkbox" name="quiz-error-tags" value="${t.id}" ${isChecked ? 'checked' : ''} class="hidden tag-checkbox-input" />
+                      <span class="tag-checkbox-pill" style="border-color: ${t.color}40; color: ${t.color};">${t.name}</span>
+                    </label>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            <!-- 訂正狀態 -->
+            <div>
+              <label class="form-label">訂正狀態</label>
+              <select id="quiz-correction-status" class="form-input">
+                <option value="corrected" ${item && item.correctionStatus === 'corrected' ? 'selected' : ''}>✅ 已訂正完成</option>
+                <option value="need_help" ${item && item.correctionStatus === 'need_help' ? 'selected' : ''}>❓ 需向老師請教</option>
+                <option value="uncorrected" ${item && item.correctionStatus === 'uncorrected' ? 'selected' : ''}>❌ 尚未訂正</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="form-label">備註與觀念筆記</label>
+              <textarea id="quiz-notes" class="form-input" rows="2" placeholder="記錄重要公式推導、容易混淆的關鍵字...">${item ? (item.notes || '') : ''}</textarea>
+            </div>
+
+            <div class="modal-footer flex items-center justify-end gap-3 pt-3 border-t border-border">
+              <button type="button" class="btn-secondary" onclick="App.closeModal()">取消</button>
+              <button type="submit" class="btn-primary">儲存小考紀錄</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    this.renderModal(modalHtml);
+  },
+
+  async saveQuiz(event, editId) {
+    event.preventDefault();
+    const tagInputs = document.querySelectorAll('input[name="quiz-error-tags"]:checked');
+    const tags = Array.from(tagInputs).map(i => i.value);
+
+    const item = {
+      id: editId || `qz_${Date.now()}`,
+      date: document.getElementById('quiz-date').value,
+      subject: document.getElementById('quiz-subject').value,
+      unitName: document.getElementById('quiz-unit').value,
+      quizType: document.getElementById('quiz-type').value,
+      score: Number(document.getElementById('quiz-score').value),
+      maxScore: Number(document.getElementById('quiz-max-score').value || 100),
+      errorTags: tags,
+      correctionStatus: document.getElementById('quiz-correction-status').value,
+      notes: document.getElementById('quiz-notes').value
+    };
+
+    await DB.put('quizzes', item);
+    this.closeModal();
+    this.showToast('小考評量紀錄儲存成功！', 'success');
+  },
+
+  async updateQuizStatus(quizId, status) {
+    const item = await DB.get('quizzes', quizId);
+    if (item) {
+      item.correctionStatus = status;
+      await DB.put('quizzes', item);
+      this.showToast('訂正狀態已更新', 'success');
+    }
+  },
+
+  // ==========================================
+  // 3. 定期段考錄入彈窗 (含分科高低標)
+  // ==========================================
+  openTermModal(editId = null) {
+    const isEdit = Boolean(editId);
+    const item = isEdit ? this.cachedData.termExams.find(t => t.id === editId) : null;
+    const subjects = (item && item.subjects) || {};
+
+    const modalHtml = `
+      <div class="modal-backdrop" onclick="App.closeModal(event)">
+        <div class="modal-card modal-lg" onclick="event.stopPropagation()">
+          <div class="modal-header flex items-center justify-between pb-3 border-b border-border">
+            <div class="flex items-center gap-2">
+              <i data-lucide="award" class="w-5 h-5 text-success"></i>
+              <h3 class="font-bold text-base text-primary">${isEdit ? '編輯定期段考評量' : '新增定期段考評量'}</h3>
+            </div>
+            <button class="btn-icon" onclick="App.closeModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+
+          <form id="form-term" onsubmit="App.saveTermExam(event, '${editId || ''}')" class="modal-body py-4 space-y-4 max-h-[75vh] overflow-y-auto">
+            
+            <!-- 考次與排名概況 -->
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div class="sm:col-span-2">
+                <label class="form-label">學期與考次 *</label>
+                <input type="text" id="term-name" required class="form-input" value="${item ? item.termName : '114學年度 上學期 第一次段考'}" />
+              </div>
+              <div>
+                <label class="form-label">考試日期 *</label>
+                <input type="date" id="term-date" required class="form-input" value="${item ? item.date : new Date().toISOString().slice(0, 10)}" />
+              </div>
+              <div>
+                <label class="form-label">班級排名</label>
+                <input type="number" id="term-class-rank" class="form-input" min="1" value="${item ? (item.classRank || '') : ''}" placeholder="第幾名" />
+              </div>
+            </div>
+
+            <!-- 9 大學科分科成績 (實得 / 班均 / 高標 / 低標 - 留空自動自適應折疊) -->
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-xs font-bold text-secondary">
+                <span>📊 各科實得分數與常模指標 (未填寫之指標或未考科目系統將自動乾淨隱藏)</span>
+              </div>
+
+              <div class="border border-border/80 rounded-lg overflow-hidden">
+                <table class="w-full text-xs">
+                  <thead class="bg-surface/80 text-muted">
+                    <tr>
+                      <th class="p-2 text-left">科目</th>
+                      <th class="p-2">個人得分</th>
+                      <th class="p-2">班級平均</th>
+                      <th class="p-2">班級高標</th>
+                      <th class="p-2">班級低標</th>
+                      <th class="p-2">PR 估算</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-border/40">
+                    ${CONSTANTS.SUBJECTS.map(s => {
+                      const subData = subjects[s.id] || {};
+                      return `
+                        <tr class="hover:bg-card/40">
+                          <td class="p-2 font-bold" style="color: ${s.color};">${s.name}</td>
+                          <td class="p-1"><input type="number" step="0.5" class="form-input-table" id="term-sub-${s.id}-score" value="${subData.score !== undefined ? subData.score : ''}" placeholder="得分" /></td>
+                          <td class="p-1"><input type="number" step="0.1" class="form-input-table" id="term-sub-${s.id}-avg" value="${subData.classAvg !== undefined ? subData.classAvg : ''}" placeholder="選填" /></td>
+                          <td class="p-1"><input type="number" step="0.1" class="form-input-table" id="term-sub-${s.id}-high" value="${subData.highBenchmark !== undefined ? subData.highBenchmark : ''}" placeholder="選填" /></td>
+                          <td class="p-1"><input type="number" step="0.1" class="form-input-table" id="term-sub-${s.id}-low" value="${subData.lowBenchmark !== undefined ? subData.lowBenchmark : ''}" placeholder="選填" /></td>
+                          <td class="p-1"><input type="number" class="form-input-table" id="term-sub-${s.id}-pr" value="${subData.prEstimate !== undefined ? subData.prEstimate : ''}" placeholder="PR" /></td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <label class="form-label">備註與檢討</label>
+              <textarea id="term-notes" class="form-input" rows="2" placeholder="記錄段考整體表現、時間分配...">${item ? (item.notes || '') : ''}</textarea>
+            </div>
+
+            <div class="modal-footer flex items-center justify-end gap-3 pt-3 border-t border-border">
+              <button type="button" class="btn-secondary" onclick="App.closeModal()">取消</button>
+              <button type="submit" class="btn-primary">儲存段考紀錄</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    this.renderModal(modalHtml);
+  },
+
+  async saveTermExam(event, editId) {
+    event.preventDefault();
+    const subjects = {};
+    let totalScore = 0;
+    let validCount = 0;
+
+    CONSTANTS.SUBJECTS.forEach(s => {
+      const scoreVal = document.getElementById(`term-sub-${s.id}-score`)?.value;
+      if (scoreVal !== '' && scoreVal !== undefined) {
+        const score = Number(scoreVal);
+        const avgVal = document.getElementById(`term-sub-${s.id}-avg`)?.value;
+        const highVal = document.getElementById(`term-sub-${s.id}-high`)?.value;
+        const lowVal = document.getElementById(`term-sub-${s.id}-low`)?.value;
+        const prVal = document.getElementById(`term-sub-${s.id}-pr`)?.value;
+
+        subjects[s.id] = {
+          score,
+          classAvg: avgVal !== '' ? Number(avgVal) : null,
+          highBenchmark: highVal !== '' ? Number(highVal) : null,
+          lowBenchmark: lowVal !== '' ? Number(lowVal) : null,
+          prEstimate: prVal !== '' ? Number(prVal) : null
+        };
+        totalScore += score;
+        validCount++;
+      }
+    });
+
+    const averageScore = validCount > 0 ? Math.round((totalScore / validCount) * 100) / 100 : 0;
+    const rankVal = document.getElementById('term-class-rank').value;
+
+    const item = {
+      id: editId || `te_${Date.now()}`,
+      termName: document.getElementById('term-name').value,
+      date: document.getElementById('term-date').value,
+      classRank: rankVal ? Number(rankVal) : null,
+      totalScore,
+      averageScore,
+      subjects,
+      notes: document.getElementById('term-notes').value
+    };
+
+    await DB.put('termExams', item);
+    this.closeModal();
+    this.showToast('定期段考紀錄儲存成功！', 'success');
+  },
+
+  // ==========================================
+  // 4. 目標高中志願設定彈窗
+  // ==========================================
+  openTargetSchoolsModal() {
+    const settings = this.cachedData.settings;
+    const targets = this.cachedData.targetSchools;
+    const currentSelected = settings.targetSchools || ['sch_1', 'sch_3', 'sch_6'];
+
+    const modalHtml = `
+      <div class="modal-backdrop" onclick="App.closeModal(event)">
+        <div class="modal-card modal-md" onclick="event.stopPropagation()">
+          <div class="modal-header flex items-center justify-between pb-3 border-b border-border">
+            <div class="flex items-center gap-2">
+              <i data-lucide="school" class="w-5 h-5 text-primary-blue"></i>
+              <h3 class="font-bold text-base text-primary">設定目標高中志願 (1~3 所)</h3>
+            </div>
+            <button class="btn-icon" onclick="App.closeModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+
+          <form id="form-targets" onsubmit="App.saveTargetSchools(event)" class="modal-body py-4 space-y-4">
+            <p class="text-xs text-secondary">
+              選定目標學校後，系統將自動比對歷次模擬考成績，計算錄取門檻差距 $\\Delta$ 並繪製達標差距雷達圖。
+            </p>
+
+            ${[0, 1, 2].map(idx => `
+              <div>
+                <label class="form-label">第 ${idx + 1} 志願目標學校</label>
+                <select id="target-school-select-${idx}" class="form-input">
+                  <option value="">-- 未設定 --</option>
+                  ${targets.map(sch => `
+                    <option value="${sch.id}" ${currentSelected[idx] === sch.id ? 'selected' : ''}>
+                      ${sch.shortName || sch.name} (門檻 ${sch.cutoffPoints} 點 / ${sch.targetTierSummary || '5A'})
+                    </option>
+                  `).join('')}
+                </select>
+              </div>
+            `).join('')}
+
+            <div class="modal-footer flex items-center justify-end gap-3 pt-3 border-t border-border">
+              <button type="button" class="btn-secondary" onclick="App.closeModal()">取消</button>
+              <button type="submit" class="btn-primary">儲存志願設定</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    this.renderModal(modalHtml);
+  },
+
+  async saveTargetSchools(event) {
+    event.preventDefault();
+    const sel0 = document.getElementById('target-school-select-0').value;
+    const sel1 = document.getElementById('target-school-select-1').value;
+    const sel2 = document.getElementById('target-school-select-2').value;
+
+    const chosen = [sel0, sel1, sel2].filter(Boolean);
+    const settings = this.cachedData.settings;
+    settings.targetSchools = chosen;
+
+    await DB.put('settings', { id: 'main', ...settings });
+    this.closeModal();
+    this.showToast('目標志願設定儲存成功！', 'success');
+  },
+
+  // ==========================================
+  // 5. 雲端同步與系統設定彈窗 (GAS Cloud Settings)
+  // ==========================================
+  openSettingsModal() {
+    const settings = this.cachedData.settings || {};
+
+    const modalHtml = `
+      <div class="modal-backdrop" onclick="App.closeModal(event)">
+        <div class="modal-card modal-lg" onclick="event.stopPropagation()">
+          <div class="modal-header flex items-center justify-between pb-3 border-b border-border">
+            <div class="flex items-center gap-2">
+              <i data-lucide="settings" class="w-5 h-5 text-primary-blue"></i>
+              <h3 class="font-bold text-base text-primary">系統設定與 Google Apps Script 雲端同步</h3>
+            </div>
+            <button class="btn-icon" onclick="App.closeModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+
+          <div class="modal-body py-4 space-y-5 max-h-[75vh] overflow-y-auto">
+            
+            <!-- 學生基本檔案 -->
+            <div class="space-y-3">
+              <h4 class="text-xs font-bold text-secondary uppercase tracking-wider">個人檔案設定</h4>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label class="form-label">學生姓名</label>
+                  <input type="text" id="setting-student-name" class="form-input" value="${settings.studentName || ''}" placeholder="學生姓名" />
+                </div>
+                <div>
+                  <label class="form-label">就讀國中</label>
+                  <input type="text" id="setting-school-name" class="form-input" value="${settings.schoolName || ''}" placeholder="學校名稱" />
+                </div>
+                <div>
+                  <label class="form-label">年級與班級</label>
+                  <input type="text" id="setting-grade-class" class="form-input" value="${settings.gradeClass || ''}" placeholder="如：九年三班" />
+                </div>
+              </div>
+              <div>
+                <label class="form-label">主要採計就學考區</label>
+                <select id="setting-district" class="form-input">
+                  ${CONSTANTS.DISTRICT_MODELS.map(d => `<option value="${d.id}" ${settings.district === d.id ? 'selected' : ''}>${d.name}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <!-- Google Apps Script 雲端試算表串接 (CORS-Safe) -->
+            <div class="p-4 rounded-lg bg-surface/70 border border-border space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="cloud" class="w-4 h-4 text-primary-blue"></i>
+                  <h4 class="text-xs font-bold text-primary">Google Apps Script (GAS) 雲端試算表同步</h4>
+                </div>
+                <span class="badge-success text-2xs">已支援 CORS 規避</span>
+              </div>
+              
+              <p class="text-2xs text-muted">
+                請輸入已部署為 Web 應用程式的 Apps Script 網址（部署權限請設為「任何人 (Anyone)」）。
+              </p>
+
+              <div>
+                <label class="form-label">GAS Web App 網址 (URL)</label>
+                <input type="url" id="setting-gas-url" class="form-input font-mono text-xs" value="${settings.gasUrl || ''}" placeholder="https://script.google.com/macros/s/AKfycb.../exec" />
+              </div>
+
+              <!-- GAS 操作按鈕列 -->
+              <div class="flex flex-wrap items-center gap-2 pt-2">
+                <button type="button" class="btn-secondary text-xs" onclick="App.testGasConnection()">
+                  <i data-lucide="activity" class="w-3.5 h-3.5 inline mr-1"></i>測試連線 (Ping)
+                </button>
+                <button type="button" class="btn-secondary text-xs text-primary-blue" onclick="App.triggerGasAutoFormat()">
+                  <i data-lucide="sparkles" class="w-3.5 h-3.5 inline mr-1"></i>一鍵格式化雲端試算表
+                </button>
+                <button type="button" class="btn-primary text-xs" onclick="App.syncToCloud()">
+                  <i data-lucide="upload-cloud" class="w-3.5 h-3.5 inline mr-1"></i>同步至雲端 (Push)
+                </button>
+                <button type="button" class="btn-secondary text-xs" onclick="App.pullFromCloud()">
+                  <i data-lucide="download-cloud" class="w-3.5 h-3.5 inline mr-1"></i>從雲端拉取 (Pull)
+                </button>
+              </div>
+
+              <div id="gas-status-msg" class="text-xs font-mono hidden pt-1"></div>
+            </div>
+
+            <!-- 本地資料備份、還原與重置 -->
+            <div class="p-4 rounded-lg bg-surface/50 border border-border space-y-3">
+              <h4 class="text-xs font-bold text-secondary uppercase tracking-wider">本機資料管理與匯出入</h4>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" class="btn-secondary text-xs" onclick="ExportImport.exportJSON()">
+                  <i data-lucide="download" class="w-3.5 h-3.5 inline mr-1"></i>匯出 JSON 全量備份
+                </button>
+                <label class="btn-secondary text-xs cursor-pointer">
+                  <i data-lucide="upload" class="w-3.5 h-3.5 inline mr-1"></i>匯入 JSON 備份
+                  <input type="file" accept=".json" class="hidden" onchange="ExportImport.importJSON(this.files[0])" />
+                </label>
+                <button type="button" class="btn-secondary text-xs" onclick="ExportImport.exportCSV('quizzes')">
+                  <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 inline mr-1"></i>匯出小考 CSV
+                </button>
+                <button type="button" class="btn-secondary text-xs" onclick="ExportImport.exportCSV('mockExams')">
+                  <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 inline mr-1"></i>匯出模考 CSV
+                </button>
+                <button type="button" class="btn-danger-outline text-xs" onclick="App.resetDefaultData()">
+                  <i data-lucide="refresh-cw" class="w-3.5 h-3.5 inline mr-1"></i>重設為示範資料
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="modal-footer flex items-center justify-end gap-3 pt-3 border-t border-border">
+            <button type="button" class="btn-secondary" onclick="App.closeModal()">取消</button>
+            <button type="button" class="btn-primary" onclick="App.saveGeneralSettings()">儲存系統設定</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.renderModal(modalHtml);
+  },
+
+  async saveGeneralSettings() {
+    const sName = document.getElementById('setting-student-name').value;
+    const schName = document.getElementById('setting-school-name').value;
+    const gClass = document.getElementById('setting-grade-class').value;
+    const dist = document.getElementById('setting-district').value;
+    const gasUrl = document.getElementById('setting-gas-url').value;
+
+    const settings = {
+      ...this.cachedData.settings,
+      studentName: sName,
+      schoolName: schName,
+      gradeClass: gClass,
+      district: dist,
+      gasUrl: gasUrl
+    };
+
+    await DB.put('settings', { id: 'main', ...settings });
+    this.closeModal();
+    this.showToast('系統設定已成功儲存！', 'success');
+  },
+
+  // GAS 互動方法
+  async testGasConnection() {
+    const url = document.getElementById('setting-gas-url')?.value;
+    const statusEl = document.getElementById('gas-status-msg');
+    if (!url) {
+      this.showToast('請先填入 GAS Web App 網址', 'warning');
+      return;
+    }
+
+    if (statusEl) {
+      statusEl.className = 'text-xs font-mono text-warning';
+      statusEl.textContent = '連線測試中...';
+      statusEl.classList.remove('hidden');
+    }
+
+    try {
+      const res = await GasSync.testConnection(url);
+      if (statusEl) {
+        statusEl.className = 'text-xs font-mono text-success';
+        statusEl.textContent = `✅ 連線成功！試算表名稱：${res.spreadsheetName || '已連線'}`;
+      }
+      this.showToast('GAS 雲端服務連線成功！', 'success');
+    } catch (err) {
+      if (statusEl) {
+        statusEl.className = 'text-xs font-mono text-danger';
+        statusEl.textContent = `❌ ${err.message}`;
+      }
+      this.showToast(err.message, 'danger');
+    }
+  },
+
+  async triggerGasAutoFormat() {
+    const url = document.getElementById('setting-gas-url')?.value || this.cachedData.settings.gasUrl;
+    if (!url) {
+      this.showToast('請先設定 GAS Web App 網址', 'warning');
+      return;
+    }
+
+    this.showToast('正在自動建立並套用試算表格式化...', 'info');
+    try {
+      const res = await GasSync.triggerAutoFormat(url);
+      this.showToast(res.message || 'Google 試算表格式化完成！', 'success');
+    } catch (err) {
+      this.showToast(`格式化失敗: ${err.message}`, 'danger');
+    }
+  },
+
+  async syncToCloud() {
+    const url = document.getElementById('setting-gas-url')?.value || this.cachedData.settings.gasUrl;
+    if (!url) {
+      this.showToast('請先設定 GAS Web App 網址', 'warning');
+      return;
+    }
+
+    this.showToast('正在推送數據至 Google 試算表...', 'info');
+    try {
+      const res = await GasSync.syncToCloud(url);
+      this.showToast(res.message || '同步完成！', 'success');
+    } catch (err) {
+      this.showToast(`同步失敗: ${err.message}`, 'danger');
+    }
+  },
+
+  async pullFromCloud() {
+    const url = document.getElementById('setting-gas-url')?.value || this.cachedData.settings.gasUrl;
+    if (!url) {
+      this.showToast('請先設定 GAS Web App 網址', 'warning');
+      return;
+    }
+
+    this.showToast('正在從 Google 試算表拉取最新數據...', 'info');
+    try {
+      const res = await GasSync.pullFromCloud(url);
+      this.showToast(res.message || '拉取完成！', 'success');
+      this.refreshCurrentView();
+    } catch (err) {
+      this.showToast(`拉取失敗: ${err.message}`, 'danger');
+    }
+  },
+
+  async resetDefaultData() {
+    if (confirm('確定要將系統資料重置為預設示範資料嗎？現有自訂內容將會被替換。')) {
+      await DB.resetToDefault();
+      this.closeModal();
+      this.showToast('已重設為預設展示資料', 'success');
+    }
+  },
+
+  async deleteItem(collection, id) {
+    if (confirm('確定要刪除這筆紀錄嗎？')) {
+      await DB.delete(collection, id);
+      this.showToast('已成功刪除', 'success');
+    }
+  },
+
+  // ==========================================
+  // Modal 與 Toast 輔助工具
+  // ==========================================
+  renderModal(html) {
+    this.closeModal();
+    const modalHost = document.getElementById('modal-host');
+    if (modalHost) {
+      modalHost.innerHTML = html;
+      this.activeModal = true;
+      if (window.lucide) lucide.createIcons();
+    }
+  },
+
+  closeModal(event) {
+    if (event && event.target && !event.target.classList.contains('modal-backdrop')) {
+      return;
+    }
+    const modalHost = document.getElementById('modal-host');
+    if (modalHost) {
+      modalHost.innerHTML = '';
+      this.activeModal = false;
+    }
+  },
+
+  showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type} animate-slide-in`;
+    
+    const iconMap = {
+      success: 'check-circle',
+      warning: 'alert-triangle',
+      danger: 'alert-octagon',
+      info: 'info'
+    };
+
+    toast.innerHTML = `
+      <i data-lucide="${iconMap[type] || 'info'}" class="w-4 h-4 inline mr-2"></i>
+      <span>${message}</span>
+    `;
+
+    container.appendChild(toast);
+    if (window.lucide) lucide.createIcons();
+
+    setTimeout(() => {
+      toast.classList.add('opacity-0', 'transition-opacity');
+      setTimeout(() => toast.remove(), 300);
+    }, 3500);
+  },
+
+  // PWA 安裝觸發
+  installPWA() {
+    if (this.deferredInstallPrompt) {
+      this.deferredInstallPrompt.prompt();
+      this.deferredInstallPrompt.userChoice.then((choice) => {
+        if (choice.outcome === 'accepted') {
+          console.log('User accepted PWA installation');
+        }
+        this.deferredInstallPrompt = null;
+        const installBtn = document.getElementById('btn-pwa-install');
+        if (installBtn) installBtn.style.display = 'none';
+      });
+    }
+  }
+};
+
+// 頁面載入完成後啟動應用
+document.addEventListener('DOMContentLoaded', () => {
+  App.init();
+});
