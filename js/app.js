@@ -172,16 +172,71 @@ const App = {
   },
 
   /**
-   * 快速新增資料分發 (點擊右上角新增按鈕)
+   * 快速新增資料分發 (點擊右上角新增按鈕或手機底部 FAB)
    */
   openQuickAddModal() {
-    if (this.currentModule === 'mock') {
-      this.openMockModal();
-    } else if (this.currentModule === 'term') {
-      this.openTermModal();
-    } else {
-      this.openQuizModal();
+    if (this.currentView === 'grid') {
+      if (this.currentModule === 'mock') return this.openMockModal();
+      if (this.currentModule === 'term') return this.openTermModal();
+      if (this.currentModule === 'quiz') return this.openQuizModal();
     }
+
+    const modalHtml = `
+      <div class="modal-backdrop" onclick="App.closeModal(event)">
+        <div class="modal-card modal-md" onclick="event.stopPropagation()">
+          <div class="modal-header flex items-center justify-between pb-3 border-b border-border">
+            <div class="flex items-center gap-2">
+              <i data-lucide="plus-circle" class="w-5 h-5 text-primary-blue"></i>
+              <h3 class="font-bold text-base text-primary">選擇錄入成績類型</h3>
+            </div>
+            <button class="btn-icon" onclick="App.closeModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+
+          <div class="modal-body py-4 space-y-3">
+            <div class="p-3.5 rounded-lg border border-border bg-card/60 hover:bg-card hover:border-primary-blue/50 transition-all cursor-pointer flex items-center justify-between group" onclick="App.closeModal(); App.openMockModal();">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-primary-blue/15 text-primary-blue flex items-center justify-center font-bold">
+                  <i data-lucide="target" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h4 class="font-bold text-sm text-primary group-hover:text-primary-blue transition-colors">會考模擬考評量</h4>
+                  <p class="text-2xs text-muted">10 秒快速矩陣點選 • 換算 36 點與雙北落點排名</p>
+                </div>
+              </div>
+              <i data-lucide="chevron-right" class="w-4 h-4 text-muted group-hover:text-primary transition-transform group-hover:translate-x-1"></i>
+            </div>
+
+            <div class="p-3.5 rounded-lg border border-border bg-card/60 hover:bg-card hover:border-primary-purple/50 transition-all cursor-pointer flex items-center justify-between group" onclick="App.closeModal(); App.openQuizModal();">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-primary-purple/15 text-primary-purple flex items-center justify-center font-bold">
+                  <i data-lucide="file-check" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h4 class="font-bold text-sm text-primary group-hover:text-primary-purple transition-colors">隨堂小考評量</h4>
+                  <p class="text-2xs text-muted">單元章節掌握度 • 錯題歸因分類與訂正追蹤</p>
+                </div>
+              </div>
+              <i data-lucide="chevron-right" class="w-4 h-4 text-muted group-hover:text-primary transition-transform group-hover:translate-x-1"></i>
+            </div>
+
+            <div class="p-3.5 rounded-lg border border-border bg-card/60 hover:bg-card hover:border-success/50 transition-all cursor-pointer flex items-center justify-between group" onclick="App.closeModal(); App.openTermModal();">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-success/15 text-success flex items-center justify-center font-bold">
+                  <i data-lucide="award" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h4 class="font-bold text-sm text-primary group-hover:text-success transition-colors">定期段考評量</h4>
+                  <p class="text-2xs text-muted">9 大考科分科實得分數 • 班平均 / 高低標 / 排名</p>
+                </div>
+              </div>
+              <i data-lucide="chevron-right" class="w-4 h-4 text-muted group-hover:text-primary transition-transform group-hover:translate-x-1"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.renderModal(modalHtml);
   },
 
   // ==========================================
@@ -497,6 +552,9 @@ const App = {
     };
 
     await DB.put('mockExams', mockItem);
+    BitableGrid.selectedSubject = 'ALL';
+    BitableGrid.selectedFilter = 'ALL';
+    BitableGrid.searchQuery = '';
     this.closeModal();
     this.showToast('會考模擬考成績儲存成功！', 'success');
     this.triggerBackgroundSyncPush();
@@ -551,11 +609,11 @@ const App = {
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label class="form-label">個人得分 *</label>
-                <input type="number" id="quiz-score" required class="form-input" min="0" max="100" step="0.5" value="${item ? item.score : ''}" placeholder="如: 85" />
+                <input type="number" id="quiz-score" required class="form-input" min="0" step="0.5" value="${item ? item.score : ''}" placeholder="如: 85" />
               </div>
               <div>
                 <label class="form-label">滿分標準</label>
-                <input type="number" id="quiz-max-score" class="form-input" value="${item ? item.maxScore : 100}" />
+                <input type="number" id="quiz-max-score" class="form-input" min="1" value="${item ? item.maxScore : 100}" />
               </div>
             </div>
 
@@ -621,6 +679,9 @@ const App = {
     };
 
     await DB.put('quizzes', item);
+    BitableGrid.selectedSubject = 'ALL';
+    BitableGrid.selectedFilter = 'ALL';
+    BitableGrid.searchQuery = '';
     this.closeModal();
     this.showToast('小考評量紀錄儲存成功！', 'success');
     this.triggerBackgroundSyncPush();
@@ -769,6 +830,9 @@ const App = {
     };
 
     await DB.put('termExams', item);
+    BitableGrid.selectedSubject = 'ALL';
+    BitableGrid.selectedFilter = 'ALL';
+    BitableGrid.searchQuery = '';
     this.closeModal();
     this.showToast('定期段考紀錄儲存成功！', 'success');
     this.triggerBackgroundSyncPush();

@@ -157,7 +157,24 @@ const ScoringEngine = {
    * @returns {Object} 完整運算結果
    */
   calculateMockMetrics(mockExam, district = 'KEELUNG_TAIPEI') {
-    const subjects = mockExam.subjects || {};
+    if (!mockExam) {
+      return {
+        summaryTier: '尚未錄入',
+        totalPoints: 0,
+        totalCredits: 0,
+        countA: 0,
+        countB: 0,
+        countC: 0,
+        countPlus: 0,
+        subjectDetail: {},
+        rankEstimate: this.estimateKeelungTaipeiRank(0)
+      };
+    }
+
+    let subjects = mockExam.subjects || {};
+    if (typeof subjects === 'string') {
+      try { subjects = JSON.parse(subjects); } catch (e) { subjects = {}; }
+    }
     const subCodes = ['CHINESE', 'ENGLISH', 'MATH', 'SOCIAL', 'SCIENCE'];
 
     let countA = 0;
