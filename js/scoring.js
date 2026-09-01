@@ -45,6 +45,112 @@ const ScoringEngine = {
   },
 
   /**
+   * 取得各考區超額比序單科順位
+   */
+  getTieBreakingOrder(district = 'KEELUNG_TAIPEI') {
+    if (district === 'CENTRAL_TAIWAN') {
+      return [
+        { code: 'CHINESE', name: '國文' },
+        { code: 'ENGLISH', name: '英語' },
+        { code: 'MATH', name: '數學' },
+        { code: 'SCIENCE', name: '自然' },
+        { code: 'SOCIAL', name: '社會' },
+        { code: 'WRITING', name: '寫作' }
+      ];
+    }
+    // 預設基北區比序：國 ➔ 數 ➔ 英 ➔ 社 ➔ 自 ➔ 寫作
+    return [
+      { code: 'CHINESE', name: '國文' },
+      { code: 'MATH', name: '數學' },
+      { code: 'ENGLISH', name: '英語' },
+      { code: 'SOCIAL', name: '社會' },
+      { code: 'SCIENCE', name: '自然' },
+      { code: 'WRITING', name: '寫作' }
+    ];
+  },
+
+  /**
+   * 計算非侵入式「升級臨界微提示」（差幾題升下一等級）
+   * @param {string} subjectCode 
+   * @param {Object} subData 
+   * @returns {Object|null}
+   */
+  getLevelJumpHint(subjectCode, subData = {}) {
+    const notation = subData.notation || 'B';
+    if (notation === 'A++') return { isMax: true, text: '已達最高標 A++' };
+
+    // 英語科微透視
+    if (subjectCode === 'ENGLISH') {
+      const rWrong = subData.readingTotal && subData.readingCorrect !== undefined ? (subData.readingTotal - subData.readingCorrect) : null;
+      if (notation === 'A+' && rWrong && rWrong <= 2) {
+        return { target: 'A++', text: `閱讀再 +1 題 ➔ A++`, isHighROI: false };
+      }
+      if (notation === 'B++') {
+        return { target: 'A', text: `加權差 1~2 題 ➔ 晉升 A 級`, isHighROI: true };
+      }
+    }
+
+    // 數學科微透視
+    if (subjectCode === 'MATH') {
+      const nc = subData.nonChoiceScore !== undefined ? subData.nonChoiceScore : null;
+      if (notation === 'B++') {
+        return { target: 'A', text: nc !== null && nc < 4 ? `非選步驟多拿 2 分 ➔ 晉升 A` : `選擇再 +1 題 ➔ 晉升 A`, isHighROI: true };
+      }
+      if (notation === 'A+') {
+        return { target: 'A++', text: nc !== null && nc < 5 ? `非選 +1 分 ➔ A++` : `選擇 +1 題 ➔ A++`, isHighROI: false };
+      }
+    }
+
+    // 國文/社會/自然通用估算
+    if (notation === 'A+') return { target: 'A++', text: `再對 1~2 題 ➔ A++`, isHighROI: false };
+    if (notation === 'B++') return { target: 'A', text: `再對 1~2 題 ➔ 跨入 A 精熟`, isHighROI: true };
+    if (notation === 'B+') return { target: 'B++', text: `再對 2~3 題 ➔ B++`, isHighROI: false };
+    if (notation === 'B') return { target: 'B+', text: `再對 2~3 題 ➔ B+`, isHighROI: false };
+    if (notation === 'C') return { target: 'B', text: `掌握基礎概念題 ➔ 跨過 B 門檻`, isHighROI: true };
+
+    return null;
+  },
+
+  /**
+   * 評估考區同分超額比序優勢度
+   * @param {Object} mockExam 
+   * @param {string} district 
+   * @returns {Object}
+   */
+  evaluateTieBreakingAdvantage(mockExam, district = 'KEELUNG_TAIPEI') {
+    if (!mockExam || !mockExam.subjects) return null;
+    const order = this.getTieBreakingOrder(district);
+    const top1 = order[0]; // 國文
+    const top2 = order[1]; // 數學 (基北) 或 英語 (中投)
+
+    const not1 = (mockExam.subjects[top1.code] && mockExam.subjects[top1.code].notation) || 'B';
+    const not2 = (mockExam.subjects[top2.code] && mockExam.subjects[top2.code].notation) || 'B';
+
+    const rank1 = this.getNotationRank(not1);
+    const rank2 = this.getNotationRank(not2);
+
+    let strength = 'NORMAL';
+    let text = '比序平穩';
+    let badgeClass = 'text-secondary';
+
+    if (rank1 >= 6 && rank2 >= 6) {
+      strength = 'VERY_STRONG';
+      text = `同分比序極具優勢 (${top1.name}${not1} • ${top2.name}${not2})`;
+      badgeClass = 'text-success';
+    } else if (rank1 >= 6 || rank2 >= 6) {
+      strength = 'STRONG';
+      text = `比序優勢 (${rank1 >= 6 ? top1.name : top2.name} 穩固)`;
+      badgeClass = 'text-primary-blue';
+    } else if (rank1 <= 3 || rank2 <= 3) {
+      strength = 'VULNERABLE';
+      text = `比序前段守備留意 (${top1.name}${not1} • ${top2.name}${not2})`;
+      badgeClass = 'text-warning';
+    }
+
+    return { strength, text, badgeClass, topSubjects: [top1, top2] };
+  },
+
+  /**
    * 計算單一模擬考的完整計分指標 (含各考區總分、總積點、會考標籤)
    * @param {Object} mockExam 模擬考物件
    * @param {string} district 考區代碼 ('KEELUNG_TAIPEI', 'CENTRAL_TAIWAN', 'KAOHSIUNG', 'GENERAL_TIER')

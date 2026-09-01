@@ -1118,6 +1118,334 @@ const App = {
     }, 3500);
   },
 
+  /**
+   * 8. 會考容錯題數與量尺升級模擬器 (What-if Simulator Modal)
+   * 低干涉、按需取用：讓考生自由拖曳滑桿模擬「差幾題上第一志願」
+   */
+  openSimulatorModal() {
+    const mocks = this.cachedData.mockExams || [];
+    const latestMock = mocks.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+    const sub = latestMock ? latestMock.subjects || {} : {};
+    const district = this.cachedData.settings.district || 'KEELUNG_TAIPEI';
+
+    const defCh = (sub.CHINESE && sub.CHINESE.rawCorrect !== undefined) ? sub.CHINESE.rawCorrect : 38;
+    const defEnR = (sub.ENGLISH && sub.ENGLISH.readingCorrect !== undefined) ? sub.ENGLISH.readingCorrect : 40;
+    const defEnL = (sub.ENGLISH && sub.ENGLISH.listeningCorrect !== undefined) ? sub.ENGLISH.listeningCorrect : 21;
+    const defMaC = (sub.MATH && sub.MATH.choiceCorrect !== undefined) ? sub.MATH.choiceCorrect : 22;
+    const defMaNC = (sub.MATH && sub.MATH.nonChoiceScore !== undefined) ? sub.MATH.nonChoiceScore : 4.5;
+    const defSo = (sub.SOCIAL && sub.SOCIAL.rawCorrect !== undefined) ? sub.SOCIAL.rawCorrect : 48;
+    const defSc = (sub.SCIENCE && sub.SCIENCE.rawCorrect !== undefined) ? sub.SCIENCE.rawCorrect : 45;
+    const defWr = (sub.WRITING && sub.WRITING.grade !== undefined) ? sub.WRITING.grade : 5;
+
+    const modalHtml = `
+      <div class="modal-backdrop" onclick="App.closeModal(event)">
+        <div class="modal-card modal-lg" onclick="event.stopPropagation()">
+          <div class="modal-header flex items-center justify-between pb-3 border-b border-border">
+            <div class="flex items-center gap-2">
+              <i data-lucide="sliders" class="w-5 h-5 text-warning"></i>
+              <h3 class="font-bold text-base text-primary">會考容錯題數與量尺升級模擬器</h3>
+            </div>
+            <button class="btn-icon" onclick="App.closeModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+
+          <div class="modal-body py-4 space-y-4 max-h-[80vh] overflow-y-auto">
+            <p class="text-xs text-secondary">
+              💡 <b>自由調整各科答對題數或非選得分</b>，即時試算會考等級躍升幅度與目標志願解鎖狀況（不影響現存紀錄）。
+            </p>
+
+            <!-- 即時試算戰情報告列 (Sticky KPI Header) -->
+            <div class="p-3.5 rounded-lg bg-card border border-border flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10 shadow-md">
+              <div>
+                <span class="text-3xs text-muted block">試算總標示</span>
+                <span id="sim-tier-summary" class="text-xl font-black font-mono text-success">5A 6+</span>
+              </div>
+              <div>
+                <span class="text-3xs text-muted block">試算總積點 (${district === 'CENTRAL_TAIWAN' ? '中投區' : '基北區'})</span>
+                <div class="flex items-baseline gap-1">
+                  <span id="sim-total-points" class="text-2xl font-black font-mono text-warning">32.8</span>
+                  <span class="text-xs text-muted font-mono">點</span>
+                </div>
+              </div>
+              <div>
+                <span class="text-3xs text-muted block">試算總積分</span>
+                <span id="sim-total-credits" class="text-lg font-bold font-mono text-primary-blue">32 分</span>
+              </div>
+              <div id="sim-top-target-status" class="px-2.5 py-1 rounded bg-surface border border-border text-xs">
+                <!-- 動態注入目標高中解鎖狀態 -->
+              </div>
+            </div>
+
+            <!-- 各科滑桿模擬器 -->
+            <div class="space-y-3">
+              
+              <!-- 國文 -->
+              <div class="p-3 rounded-lg bg-surface/60 border border-border/70">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold text-xs text-primary">國文科</span>
+                    <span id="sim-ch-tier" class="cap-tier-badge text-3xs">A+</span>
+                  </div>
+                  <span class="text-xs font-mono text-secondary"><b id="sim-ch-val" class="text-primary font-bold">${defCh}</b> / 42 題</span>
+                </div>
+                <input type="range" id="sim-ch-range" min="0" max="42" value="${defCh}" class="w-full accent-primary-blue cursor-pointer" oninput="App.onSimulateRecalculate()" />
+              </div>
+
+              <!-- 英語 (閱讀 + 聽力) -->
+              <div class="p-3 rounded-lg bg-surface/60 border border-border/70">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold text-xs text-primary">英語科 (閱讀+聽力)</span>
+                    <span id="sim-en-tier" class="cap-tier-badge text-3xs">A++</span>
+                    <span id="sim-en-weighted" class="text-2xs text-primary-blue font-mono font-bold">98.14分</span>
+                  </div>
+                  <span class="text-2xs font-mono text-muted">閱 <b id="sim-en-r-val" class="text-primary">${defEnR}</b>/43 • 聽 <b id="sim-en-l-val" class="text-primary">${defEnL}</b>/21</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label class="text-3xs text-muted block mb-1">閱讀答對題數</label>
+                    <input type="range" id="sim-en-r-range" min="0" max="43" value="${defEnR}" class="w-full accent-primary-blue cursor-pointer" oninput="App.onSimulateRecalculate()" />
+                  </div>
+                  <div>
+                    <label class="text-3xs text-muted block mb-1">聽力答對題數</label>
+                    <input type="range" id="sim-en-l-range" min="0" max="21" value="${defEnL}" class="w-full accent-primary-blue cursor-pointer" oninput="App.onSimulateRecalculate()" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- 數學 (選擇 + 非選) -->
+              <div class="p-3 rounded-lg bg-surface/60 border border-border/70">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold text-xs text-primary">數學科 (選擇+非選)</span>
+                    <span id="sim-ma-tier" class="cap-tier-badge text-3xs">A+</span>
+                    <span id="sim-ma-weighted" class="text-2xs text-primary-purple font-mono font-bold">92.0分</span>
+                  </div>
+                  <span class="text-2xs font-mono text-muted">選 <b id="sim-ma-c-val" class="text-primary">${defMaC}</b>/25 • 非選 <b id="sim-ma-nc-val" class="text-primary">${defMaNC}</b>/6</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label class="text-3xs text-muted block mb-1">選擇答對題數 (佔85%)</label>
+                    <input type="range" id="sim-ma-c-range" min="0" max="25" value="${defMaC}" class="w-full accent-primary-purple cursor-pointer" oninput="App.onSimulateRecalculate()" />
+                  </div>
+                  <div>
+                    <label class="text-3xs text-muted block mb-1">非選實得分數 (佔15%)</label>
+                    <input type="range" id="sim-ma-nc-range" min="0" max="6" step="0.5" value="${defMaNC}" class="w-full accent-primary-purple cursor-pointer" oninput="App.onSimulateRecalculate()" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- 社會 -->
+              <div class="p-3 rounded-lg bg-surface/60 border border-border/70">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold text-xs text-primary">社會科</span>
+                    <span id="sim-so-tier" class="cap-tier-badge text-3xs">A</span>
+                  </div>
+                  <span class="text-xs font-mono text-secondary"><b id="sim-so-val" class="text-primary font-bold">${defSo}</b> / 54 題</span>
+                </div>
+                <input type="range" id="sim-so-range" min="0" max="54" value="${defSo}" class="w-full accent-primary-blue cursor-pointer" oninput="App.onSimulateRecalculate()" />
+              </div>
+
+              <!-- 自然 -->
+              <div class="p-3 rounded-lg bg-surface/60 border border-border/70">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold text-xs text-primary">自然科</span>
+                    <span id="sim-sc-tier" class="cap-tier-badge text-3xs">A</span>
+                  </div>
+                  <span class="text-xs font-mono text-secondary"><b id="sim-sc-val" class="text-primary font-bold">${defSc}</b> / 50 題</span>
+                </div>
+                <input type="range" id="sim-sc-range" min="0" max="50" value="${defSc}" class="w-full accent-primary-blue cursor-pointer" oninput="App.onSimulateRecalculate()" />
+              </div>
+
+              <!-- 寫作 -->
+              <div class="p-3 rounded-lg bg-surface/60 border border-border/70">
+                <div class="flex items-center justify-between mb-1.5">
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold text-xs text-primary">寫作測驗</span>
+                    <span id="sim-wr-tier" class="writing-badge text-3xs">${defWr} 級分</span>
+                  </div>
+                  <span class="text-xs font-mono text-secondary"><b id="sim-wr-val" class="text-primary font-bold">${defWr}</b> 級分</span>
+                </div>
+                <input type="range" id="sim-wr-range" min="0" max="6" value="${defWr}" class="w-full accent-warning cursor-pointer" oninput="App.onSimulateRecalculate()" />
+              </div>
+
+            </div>
+
+            <!-- 目標志願解鎖比對矩陣 (Live Unlocked Target List) -->
+            <div class="p-3 rounded-lg bg-card border border-border">
+              <h4 class="font-bold text-xs text-primary mb-2 flex items-center gap-1.5">
+                <i data-lucide="school" class="w-3.5 h-3.5 text-primary-blue"></i>
+                目標高中解鎖狀態即時預覽
+              </h4>
+              <div id="sim-target-school-list" class="space-y-1.5 text-xs">
+                <!-- 動態注入各校解鎖狀態 -->
+              </div>
+            </div>
+
+            <div class="modal-footer flex items-center justify-end gap-3 pt-3 border-t border-border">
+              <button type="button" class="btn-secondary" onclick="App.closeModal()">完成試算</button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.renderModal(modalHtml);
+    setTimeout(() => this.onSimulateRecalculate(), 50);
+  },
+
+  /**
+   * 模擬器即時運算
+   */
+  onSimulateRecalculate() {
+    const ch = parseInt(document.getElementById('sim-ch-range')?.value || 38);
+    const enR = parseInt(document.getElementById('sim-en-r-range')?.value || 40);
+    const enL = parseInt(document.getElementById('sim-en-l-range')?.value || 21);
+    const maC = parseInt(document.getElementById('sim-ma-c-range')?.value || 22);
+    const maNC = parseFloat(document.getElementById('sim-ma-nc-range')?.value || 4.5);
+    const so = parseInt(document.getElementById('sim-so-range')?.value || 48);
+    const sc = parseInt(document.getElementById('sim-sc-range')?.value || 45);
+    const wr = parseInt(document.getElementById('sim-wr-range')?.value || 5);
+
+    // 更新顯示數值
+    const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setTxt('sim-ch-val', ch);
+    setTxt('sim-en-r-val', enR);
+    setTxt('sim-en-l-val', enL);
+    setTxt('sim-ma-c-val', maC);
+    setTxt('sim-ma-nc-val', maNC);
+    setTxt('sim-so-val', so);
+    setTxt('sim-sc-val', sc);
+    setTxt('sim-wr-val', wr);
+
+    // 換算各科標示
+    const enWeighted = ScoringEngine.calcEnglishWeightedScore(enR, 43, enL, 21);
+    const maWeighted = ScoringEngine.calcMathWeightedScore(maC, 25, maNC, 6);
+
+    setTxt('sim-en-weighted', `${enWeighted}分`);
+    setTxt('sim-ma-weighted', `${maWeighted}分`);
+
+    const chNot = this.rawToNotation('CHINESE', ch);
+    const enNot = this.rawToNotation('ENGLISH', enWeighted);
+    const maNot = this.rawToNotation('MATH', maWeighted);
+    const soNot = this.rawToNotation('SOCIAL', so);
+    const scNot = this.rawToNotation('SCIENCE', sc);
+
+    setTxt('sim-ch-tier', chNot);
+    setTxt('sim-en-tier', enNot);
+    setTxt('sim-ma-tier', maNot);
+    setTxt('sim-so-tier', soNot);
+    setTxt('sim-sc-tier', scNot);
+    setTxt('sim-wr-tier', `${wr} 級分`);
+
+    // 組裝 Mock 物件進行全考區指標計算
+    const simMock = {
+      title: '量尺模擬試算',
+      date: new Date().toISOString().slice(0, 10),
+      district: this.cachedData.settings.district || 'KEELUNG_TAIPEI',
+      subjects: {
+        CHINESE: { notation: chNot, rawCorrect: ch },
+        ENGLISH: { notation: enNot, weightedScore: enWeighted, readingCorrect: enR, listeningCorrect: enL },
+        MATH: { notation: maNot, weightedScore: maWeighted, choiceCorrect: maC, nonChoiceScore: maNC },
+        SOCIAL: { notation: soNot, rawCorrect: so },
+        SCIENCE: { notation: scNot, rawCorrect: sc },
+        WRITING: { grade: wr, isExempt: false }
+      }
+    };
+
+    const metrics = ScoringEngine.calculateMockMetrics(simMock, simMock.district);
+    setTxt('sim-tier-summary', metrics.summaryTier);
+    setTxt('sim-total-points', metrics.totalPoints);
+    setTxt('sim-total-credits', `${metrics.totalCredits} 分`);
+
+    // 比對目標高中
+    const targetSchools = this.cachedData.targetSchools || [];
+    const activeTargets = (this.cachedData.settings.targetSchools || ['sch_1', 'sch_3', 'sch_6']).map(id => targetSchools.find(s => s.id === id)).filter(Boolean);
+
+    const listEl = document.getElementById('sim-target-school-list');
+    const topStatusEl = document.getElementById('sim-top-target-status');
+
+    if (activeTargets.length > 0 && topStatusEl) {
+      const primary = activeTargets[0];
+      const diag = ScoringEngine.diagnoseTargetSchool(metrics, primary);
+      topStatusEl.innerHTML = `
+        <span class="text-3xs text-muted block">第一志願：${primary.shortName} (${primary.cutoffPoints}點)</span>
+        <span class="font-bold" style="color: ${diag.statusColor};">${diag.statusText} (${diag.delta >= 0 ? `+${diag.delta}` : diag.delta}點)</span>
+      `;
+    }
+
+    if (listEl) {
+      listEl.innerHTML = activeTargets.map(sch => {
+        const diag = ScoringEngine.diagnoseTargetSchool(metrics, sch);
+        return `
+          <div class="flex items-center justify-between p-2 rounded bg-surface/70 border border-border/50">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-primary">${sch.shortName}</span>
+              <span class="text-2xs text-muted font-mono">門檻 ${sch.cutoffPoints} 點</span>
+            </div>
+            <span class="font-bold text-2xs px-2 py-0.5 rounded" style="background: ${diag.statusColor}15; color: ${diag.statusColor};">
+              ${diag.statusText} (${diag.delta >= 0 ? `+${diag.delta}` : diag.delta}點)
+            </span>
+          </div>
+        `;
+      }).join('');
+    }
+  },
+
+  /**
+   * 容錯題數轉換標準標示
+   */
+  rawToNotation(subCode, val) {
+    if (subCode === 'CHINESE') {
+      if (val >= 40) return 'A++';
+      if (val >= 38) return 'A+';
+      if (val >= 36) return 'A';
+      if (val >= 32) return 'B++';
+      if (val >= 28) return 'B+';
+      if (val >= 19) return 'B';
+      return 'C';
+    }
+    if (subCode === 'ENGLISH') {
+      if (val >= 98.05) return 'A++';
+      if (val >= 95.45) return 'A+';
+      if (val >= 89.55) return 'A';
+      if (val >= 79.5) return 'B++';
+      if (val >= 68.0) return 'B+';
+      if (val >= 38.5) return 'B';
+      return 'C';
+    }
+    if (subCode === 'MATH') {
+      if (val >= 96.5) return 'A++';
+      if (val >= 91.5) return 'A+';
+      if (val >= 80.5) return 'A';
+      if (val >= 70.5) return 'B++';
+      if (val >= 58.5) return 'B+';
+      if (val >= 36.5) return 'B';
+      return 'C';
+    }
+    if (subCode === 'SOCIAL') {
+      if (val >= 52) return 'A++';
+      if (val >= 50) return 'A+';
+      if (val >= 48) return 'A';
+      if (val >= 42) return 'B++';
+      if (val >= 36) return 'B+';
+      if (val >= 23) return 'B';
+      return 'C';
+    }
+    if (subCode === 'SCIENCE') {
+      if (val >= 48) return 'A++';
+      if (val >= 46) return 'A+';
+      if (val >= 43) return 'A';
+      if (val >= 37) return 'B++';
+      if (val >= 31) return 'B+';
+      if (val >= 20) return 'B';
+      return 'C';
+    }
+    return 'B';
+  },
+
   // PWA 安裝觸發
   installPWA() {
     if (this.deferredInstallPrompt) {

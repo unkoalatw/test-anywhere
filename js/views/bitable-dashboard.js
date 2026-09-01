@@ -1,6 +1,7 @@
 // 飛書多維表格視圖引擎 - 戰情儀表板視圖 (Analytics Dashboard Component)
 const BitableDashboard = {
   currentQuizTrendSub: 'ALL',
+  isZenMode: false,
 
   renderDashboard(containerId, data = {}) {
     const container = document.getElementById(containerId);
@@ -18,6 +19,23 @@ const BitableDashboard = {
     const primaryTargetId = (settings.targetSchools && settings.targetSchools[0]) || 'sch_1';
     const primaryTarget = targetSchools.find(s => s.id === primaryTargetId) || targetSchools[0];
     const targetDiag = latestMetrics && primaryTarget ? ScoringEngine.diagnoseTargetSchool(latestMetrics, primaryTarget) : null;
+
+    // 考區超額比序評估 (低干涉高槓桿訊號)
+    const tieBreakInfo = latestMock ? ScoringEngine.evaluateTieBreakingAdvantage(latestMock, district) : null;
+
+    // 取得各科升級臨界提示
+    const subjectJumpHints = [];
+    if (latestMock && latestMock.subjects) {
+      const subKeys = ['CHINESE', 'ENGLISH', 'MATH', 'SOCIAL', 'SCIENCE'];
+      subKeys.forEach(k => {
+        const sub = latestMock.subjects[k] || {};
+        const hint = ScoringEngine.getLevelJumpHint(k, sub);
+        const subObj = CONSTANTS.CAP_SUBJECTS.find(s => s.id === k) || { name: k };
+        if (hint && !hint.isMax) {
+          subjectJumpHints.push({ name: subObj.name, notation: sub.notation, hint });
+        }
+      });
+    }
 
     // 取得診斷提分策略清單
     const strategies = latestMock ? ScoringEngine.generateActionableStrategies(latestMock, quizzes, primaryTarget) : [];
@@ -40,7 +58,37 @@ const BitableDashboard = {
     const redFlagCount = quizzes.filter(q => ((q.score || 0) / (q.maxScore || 100)) < 0.7).length;
 
     let html = `
-      <div class="dashboard-wrapper space-y-6">
+      <div class="dashboard-wrapper space-y-5">
+
+        <!-- 頂部高槓桿功能快捷列 (無干擾靜態工具列) -->
+        <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-surface border border-border">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-xs font-bold text-primary flex items-center gap-1.5">
+              <i data-lucide="activity" class="w-4 h-4 text-primary-blue"></i>
+              會考實力動態透視
+            </span>
+            ${tieBreakInfo ? `
+              <span class="text-2xs font-medium px-2 py-0.5 rounded border border-border/60 bg-card ${tieBreakInfo.badgeClass}">
+                <i data-lucide="shield-check" class="w-3 h-3 inline mr-1"></i>${tieBreakInfo.text}
+              </span>
+            ` : ''}
+          </div>
+
+          <div class="flex items-center gap-2">
+            <!-- 升級量尺試算模擬器 (按需開啟，完全不主動干涉) -->
+            <button class="btn-secondary text-2xs py-1 px-2.5" onclick="App.openSimulatorModal()" title="模擬若某科多對幾題對落點的影響">
+              <i data-lucide="sliders" class="w-3.5 h-3.5 inline mr-1 text-warning"></i>
+              <span>升級量尺模擬器</span>
+            </button>
+
+            <!-- 專注模式 / 完整模式 切換 -->
+            <button class="btn-secondary text-2xs py-1 px-2" onclick="BitableDashboard.toggleZenMode()" title="切換純數據專注模式">
+              <i data-lucide="${this.isZenMode ? 'eye' : 'zap-off'}" class="w-3.5 h-3.5 inline mr-1 text-secondary"></i>
+              <span>${this.isZenMode ? '完整視圖' : '專注降噪'}</span>
+            </button>
+          </div>
+        </div>
+
         <!-- 頂部戰情核心 KPI 總覽卡片列 -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
@@ -114,6 +162,31 @@ const BitableDashboard = {
           </div>
 
         </div>
+
+        <!-- 關鍵升級臨界透視列 (微提示，低干涉) -->
+        ${subjectJumpHints.length > 0 ? `
+          <div class="p-3 rounded-lg border border-border/80 bg-card/60">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-1.5 text-xs font-bold text-primary">
+                <i data-lucide="target" class="w-4 h-4 text-primary-purple"></i>
+                各科升級臨界透視（距離下一標示）
+              </div>
+              <span class="text-3xs text-muted">單純題數換算 • 無額外負擔</span>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              ${subjectJumpHints.map(h => `
+                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface border border-border text-xs">
+                  <span class="font-bold text-primary">${h.name}</span>
+                  <span class="font-mono text-2xs text-secondary">${h.notation}</span>
+                  <span class="text-muted">➔</span>
+                  <span class="font-medium ${h.hint.isHighROI ? 'text-warning font-bold' : 'text-primary-blue'} text-2xs">
+                    ${h.hint.isHighROI ? '⚡ ' : ''}${h.hint.text}
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
 
         <!-- 志願落點與雷達差距診斷區塊 -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -224,50 +297,44 @@ const BitableDashboard = {
 
         </div>
 
-        <!-- 智慧弱點診斷與提分策略引擎輸出 -->
-        <div class="dashboard-card">
-          <div class="card-header flex items-center justify-between mb-4">
-            <div class="flex items-center gap-2">
-              <i data-lucide="sparkles" class="w-4 h-4 text-warning"></i>
-              <h3 class="font-bold text-sm text-primary">智慧弱點診斷與提分衝刺策略</h3>
-            </div>
-            <span class="text-xs text-muted">基於模考錯題細項與小考掌握度交叉推導</span>
-          </div>
-
-          <div class="strategies-grid grid grid-cols-1 md:grid-cols-2 gap-4">
-      `;
-
-      if (strategies.length === 0) {
-        html += `<div class="col-span-2 text-center py-6 text-xs text-muted">目前表現優異，無迫切提分預警！</div>`;
-      } else {
-        strategies.forEach(st => {
-          html += `
-            <div class="strategy-card p-4 rounded-lg border border-border bg-card/40 hover:bg-card/70 transition-colors">
-              <div class="flex items-start gap-3">
-                <div class="strategy-icon-box p-2.5 rounded-md bg-primary-blue/10 text-primary-blue">
-                  <i data-lucide="${st.icon || 'lightbulb'}" class="w-5 h-5"></i>
-                </div>
-                <div class="flex-1">
-                  <div class="flex items-center justify-between mb-1">
-                    <h4 class="font-bold text-sm text-primary">${st.title}</h4>
-                    <span class="badge-${st.severity === 'high' ? 'danger' : 'warning'}-subtle text-3xs font-mono uppercase">
-                      ${st.severity === 'high' ? '關鍵突破' : '提分推薦'}
-                    </span>
-                  </div>
-                  <p class="text-xs text-secondary mb-2">${st.description}</p>
-                  <div class="strategy-action p-2 rounded bg-surface/80 border border-border/60 text-xs text-primary-blue font-medium">
-                    <i data-lucide="check-circle" class="w-3.5 h-3.5 inline mr-1 text-success"></i>${st.actionPlan}
-                  </div>
-                </div>
+        <!-- 非專注模式下渲染診斷策略 (Zen Mode 下自動隱藏降噪) -->
+        ${!this.isZenMode ? `
+          <div class="dashboard-card">
+            <div class="card-header flex items-center justify-between mb-4">
+              <div class="flex items-center gap-2">
+                <i data-lucide="sparkles" class="w-4 h-4 text-warning"></i>
+                <h3 class="font-bold text-sm text-primary">提分衝刺指引 (可切換專注模式收起)</h3>
               </div>
+              <span class="text-xs text-muted">依最新考科掌握度推導</span>
             </div>
-          `;
-        });
-      }
 
-      html += `
+            <div class="strategies-grid grid grid-cols-1 md:grid-cols-2 gap-4">
+              ${strategies.length === 0 ? `
+                <div class="col-span-2 text-center py-6 text-xs text-muted">目前表現優異，無迫切提分預警！</div>
+              ` : strategies.map(st => `
+                <div class="strategy-card p-4 rounded-lg border border-border bg-card/40 hover:bg-card/70 transition-colors">
+                  <div class="flex items-start gap-3">
+                    <div class="strategy-icon-box p-2.5 rounded-md bg-primary-blue/10 text-primary-blue">
+                      <i data-lucide="${st.icon || 'lightbulb'}" class="w-5 h-5"></i>
+                    </div>
+                    <div class="flex-1">
+                      <div class="flex items-center justify-between mb-1">
+                        <h4 class="font-bold text-sm text-primary">${st.title}</h4>
+                        <span class="badge-${st.severity === 'high' ? 'danger' : 'warning'}-subtle text-3xs font-mono uppercase">
+                          ${st.severity === 'high' ? '關鍵突破' : '提分推薦'}
+                        </span>
+                      </div>
+                      <p class="text-xs text-secondary mb-2">${st.description}</p>
+                      <div class="strategy-action p-2 rounded bg-surface/80 border border-border/60 text-xs text-primary-blue font-medium">
+                        <i data-lucide="check-circle" class="w-3.5 h-3.5 inline mr-1 text-success"></i>${st.actionPlan}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
           </div>
-        </div>
+        ` : ''}
 
       </div>
     `;
@@ -286,5 +353,11 @@ const BitableDashboard = {
   onQuizTrendSubjectChange(subId) {
     this.currentQuizTrendSub = subId;
     App.refreshCurrentView();
+  },
+
+  toggleZenMode() {
+    this.isZenMode = !this.isZenMode;
+    App.refreshCurrentView();
+    App.showToast(this.isZenMode ? '已切換為純數據專注模式 🧘' : '已恢復完整視圖 📊', 'info');
   }
 };
