@@ -440,18 +440,20 @@ function fetchAllSheetsData() {
   var quizSheet = ss.getSheetByName('小考評量紀錄');
   if (quizSheet && quizSheet.getLastRow() > 1) {
     var qValues = quizSheet.getRange(2, 1, quizSheet.getLastRow() - 1, 12).getValues();
-    result.quizzes = qValues.map(function(r) {
+    result.quizzes = qValues.filter(function(r) {
+      return (r[0] !== '' || r[1] !== '' || r[4] !== '');
+    }).map(function(r, idx) {
       return {
-        id: String(r[0]),
-        date: formatDate(r[1]),
-        subject: String(r[2]),
-        unitName: String(r[4]),
-        quizType: String(r[5]),
-        score: Number(r[6]),
-        maxScore: Number(r[7]) || 100,
-        errorTags: String(r[9]).split(',').map(function(s) { return s.trim(); }).filter(Boolean),
-        correctionStatus: String(r[10]),
-        notes: String(r[11])
+        id: r[0] ? String(r[0]) : ('qz_' + new Date().getTime() + '_' + idx),
+        date: formatDate(r[1]) || new Date().toISOString().slice(0, 10),
+        subject: String(r[2] || 'CHINESE'),
+        unitName: String(r[4] || '單元測驗'),
+        quizType: String(r[5] || '隨堂測驗'),
+        score: (r[6] !== '' && !isNaN(r[6])) ? Number(r[6]) : 0,
+        maxScore: (r[7] !== '' && !isNaN(r[7])) ? Number(r[7]) : 100,
+        errorTags: r[9] ? String(r[9]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [],
+        correctionStatus: String(r[10] || 'corrected'),
+        notes: r[11] ? String(r[11]) : ''
       };
     });
   }
@@ -460,23 +462,32 @@ function fetchAllSheetsData() {
   var mockSheet = ss.getSheetByName('模擬考會考專區');
   if (mockSheet && mockSheet.getLastRow() > 1) {
     var mValues = mockSheet.getRange(2, 1, mockSheet.getLastRow() - 1, 25).getValues();
-    result.mockExams = mValues.map(function(r) {
+    result.mockExams = mValues.filter(function(r) {
+      return (r[0] !== '' || r[1] !== '' || r[2] !== '');
+    }).map(function(r, idx) {
+      var id = r[0] ? String(r[0]) : ('mock_' + new Date().getTime() + '_' + idx);
+      var chNot = r[6] ? String(r[6]).trim() : 'B';
+      var enNot = r[8] ? String(r[8]).trim() : 'B';
+      var maNot = r[12] ? String(r[12]).trim() : 'B';
+      var soNot = r[16] ? String(r[16]).trim() : 'B';
+      var scNot = r[18] ? String(r[18]).trim() : 'B';
+      
       return {
-        id: String(r[0]),
-        title: String(r[1]),
-        date: formatDate(r[2]),
-        organizer: String(r[3]),
-        scope: String(r[4]),
-        district: String(r[5]) || 'KEELUNG_TAIPEI',
+        id: id,
+        title: r[1] ? String(r[1]) : '模擬考評量',
+        date: formatDate(r[2]) || new Date().toISOString().slice(0, 10),
+        organizer: r[3] ? String(r[3]) : '模擬考',
+        scope: r[4] ? String(r[4]) : '全範圍',
+        district: r[5] ? String(r[5]) : 'KEELUNG_TAIPEI',
         subjects: {
-          CHINESE: { notation: String(r[6]), rawCorrect: r[7] !== '' ? Number(r[7]) : undefined },
-          ENGLISH: { notation: String(r[8]), readingCorrect: r[9] !== '' ? Number(r[9]) : undefined, listeningCorrect: r[10] !== '' ? Number(r[10]) : undefined, weightedScore: Number(r[11]) },
-          MATH: { notation: String(r[12]), choiceCorrect: r[13] !== '' ? Number(r[13]) : undefined, nonChoiceScore: r[14] !== '' ? Number(r[14]) : undefined, weightedScore: Number(r[15]) },
-          SOCIAL: { notation: String(r[16]), rawCorrect: r[17] !== '' ? Number(r[17]) : undefined },
-          SCIENCE: { notation: String(r[18]), rawCorrect: r[19] !== '' ? Number(r[19]) : undefined },
-          WRITING: { grade: Number(r[20]) || 0 }
+          CHINESE: { notation: chNot, rawCorrect: (r[7] !== '' && !isNaN(r[7])) ? Number(r[7]) : undefined },
+          ENGLISH: { notation: enNot, readingCorrect: (r[9] !== '' && !isNaN(r[9])) ? Number(r[9]) : undefined, listeningCorrect: (r[10] !== '' && !isNaN(r[10])) ? Number(r[10]) : undefined, weightedScore: (r[11] !== '' && !isNaN(r[11])) ? Number(r[11]) : undefined },
+          MATH: { notation: maNot, choiceCorrect: (r[13] !== '' && !isNaN(r[13])) ? Number(r[13]) : undefined, nonChoiceScore: (r[14] !== '' && !isNaN(r[14])) ? Number(r[14]) : undefined, weightedScore: (r[15] !== '' && !isNaN(r[15])) ? Number(r[15]) : undefined },
+          SOCIAL: { notation: soNot, rawCorrect: (r[17] !== '' && !isNaN(r[17])) ? Number(r[17]) : undefined },
+          SCIENCE: { notation: scNot, rawCorrect: (r[19] !== '' && !isNaN(r[19])) ? Number(r[19]) : undefined },
+          WRITING: { grade: (r[20] !== '' && !isNaN(r[20])) ? Number(r[20]) : 0 }
         },
-        notes: String(r[24])
+        notes: r[24] ? String(r[24]) : ''
       };
     });
   }

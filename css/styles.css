@@ -137,7 +137,54 @@ body {
 
 .brand-subtitle {
   font-size: 0.7rem;
-  color: var(--text-secondary);
+/* 雲端同步指示徽章 */
+.cloud-sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  transition: var(--transition-fast);
+}
+
+.cloud-sync-badge:hover {
+  border-color: var(--color-primary-glow);
+  background: var(--bg-card-hover);
+}
+
+.sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.sync-dot-green {
+  background-color: #10B981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.sync-dot-blue {
+  background-color: #3B82F6;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.6);
+  animation: pulseDot 1s infinite alternate;
+}
+
+.sync-dot-yellow {
+  background-color: #F59E0B;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.sync-dot-red {
+  background-color: #EF4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+
+@keyframes pulseDot {
+  from { opacity: 0.4; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1.15); }
 }
 
 /* 模組與視圖標籤列 */

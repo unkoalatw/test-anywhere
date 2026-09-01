@@ -45,6 +45,9 @@ const App = {
     this.setupEventListeners();
     this.refreshCurrentView();
     if (window.lucide) lucide.createIcons();
+
+    // 6. 啟動高頻背景雲端自動同步引擎
+    this.initBackgroundSync();
   },
 
   async loadAllData() {
@@ -496,6 +499,7 @@ const App = {
     await DB.put('mockExams', mockItem);
     this.closeModal();
     this.showToast('會考模擬考成績儲存成功！', 'success');
+    this.triggerBackgroundSyncPush();
   },
 
   // ==========================================
@@ -619,6 +623,7 @@ const App = {
     await DB.put('quizzes', item);
     this.closeModal();
     this.showToast('小考評量紀錄儲存成功！', 'success');
+    this.triggerBackgroundSyncPush();
   },
 
   async updateQuizStatus(quizId, status) {
@@ -627,6 +632,7 @@ const App = {
       item.correctionStatus = status;
       await DB.put('quizzes', item);
       this.showToast('訂正狀態已更新', 'success');
+      this.triggerBackgroundSyncPush();
     }
   },
 
@@ -765,6 +771,7 @@ const App = {
     await DB.put('termExams', item);
     this.closeModal();
     this.showToast('定期段考紀錄儲存成功！', 'success');
+    this.triggerBackgroundSyncPush();
   },
 
   // ==========================================
@@ -830,6 +837,7 @@ const App = {
     await DB.put('settings', { id: 'main', ...settings });
     this.closeModal();
     this.showToast('目標志願設定儲存成功！', 'success');
+    this.triggerBackgroundSyncPush();
   },
 
   // ==========================================
@@ -969,6 +977,7 @@ const App = {
     await DB.put('settings', { id: 'main', ...settings });
     this.closeModal();
     this.showToast('系統設定已成功儲存！', 'success');
+    this.triggerBackgroundSyncPush();
   },
 
   // GAS 互動方法
@@ -1028,7 +1037,7 @@ const App = {
     this.showToast('正在推送數據至 Google 試算表...', 'info');
     try {
       const res = await GasSync.syncToCloud(url);
-      this.showToast(res.message || '同步完成！', 'success');
+      this.showToast(res ? (res.message || '同步完成！') : '已同步至 Google 試算表', 'success');
     } catch (err) {
       this.showToast(`同步失敗: ${err.message}`, 'danger');
     }
@@ -1044,11 +1053,101 @@ const App = {
     this.showToast('正在從 Google 試算表拉取最新數據...', 'info');
     try {
       const res = await GasSync.pullFromCloud(url);
-      this.showToast(res.message || '拉取完成！', 'success');
+      await this.loadAllData();
       this.refreshCurrentView();
+      this.showToast((res && res.message) ? res.message : '拉取完成！已載入最新成績', 'success');
     } catch (err) {
       this.showToast(`拉取失敗: ${err.message}`, 'danger');
     }
+  },
+
+  // ==========================================
+  // 高頻背景自動同步引擎 (Background Auto-Sync)
+  // ==========================================
+  bgPushTimer: null,
+
+  initBackgroundSync() {
+    // 監聽 GAS 狀態變更更新導覽列小指示燈
+    GasSync.subscribeStatus((status, detail) => {
+      const badge = document.getElementById('cloud-sync-badge');
+      const textEl = document.getElementById('cloud-sync-text');
+      if (!badge) return;
+      
+      const dot = badge.querySelector('.sync-dot');
+      if (status === 'syncing') {
+        if (dot) dot.className = 'sync-dot sync-dot-blue';
+        if (textEl) textEl.textContent = '同步中...';
+      } else if (status === 'synced') {
+        if (dot) dot.className = 'sync-dot sync-dot-green';
+        if (textEl) textEl.textContent = '已連線';
+      } else if (status === 'error') {
+        if (dot) dot.className = 'sync-dot sync-dot-red';
+        if (textEl) textEl.textContent = '同步異常';
+      } else if (status === 'offline') {
+        if (dot) dot.className = 'sync-dot sync-dot-yellow';
+        if (textEl) textEl.textContent = '離線中';
+      }
+    });
+
+    // 1. 初次啟動時，若有 GAS 網址，立即靜默在背景從雲端拉取最新資料
+    const gasUrl = this.cachedData.settings.gasUrl;
+    if (gasUrl && navigator.onLine) {
+      GasSync.pullFromCloud(gasUrl, { silent: true }).then(async (res) => {
+        if (res && res.data) {
+          await this.loadAllData();
+          this.refreshCurrentView();
+        }
+      }).catch(() => {});
+    }
+
+    // 2. 每 25 秒進行高頻背景自動檢查與拉取 (輪詢)
+    setInterval(() => {
+      const currentUrl = this.cachedData.settings.gasUrl;
+      if (currentUrl && navigator.onLine && !GasSync.isSyncing) {
+        GasSync.pullFromCloud(currentUrl, { silent: true }).then(async (res) => {
+          if (res && res.data) {
+            await this.loadAllData();
+            this.refreshCurrentView();
+          }
+        }).catch(() => {});
+      }
+    }, 25000);
+
+    // 3. 當使用者切換分頁回到 App 時，立即觸發背景同步
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        const currentUrl = this.cachedData.settings.gasUrl;
+        if (currentUrl && navigator.onLine && !GasSync.isSyncing) {
+          GasSync.pullFromCloud(currentUrl, { silent: true }).then(async (res) => {
+            if (res && res.data) {
+              await this.loadAllData();
+              this.refreshCurrentView();
+            }
+          }).catch(() => {});
+        }
+      }
+    });
+
+    // 4. 當網路重新連線時立即背景同步
+    window.addEventListener('online', () => {
+      const currentUrl = this.cachedData.settings.gasUrl;
+      if (currentUrl) {
+        GasSync.syncToCloud(currentUrl, { silent: true }).catch(() => {});
+      }
+    });
+  },
+
+  // 本地資料異動時觸發防抖背景推播至雲端 (Auto Push on Save)
+  triggerBackgroundSyncPush() {
+    const gasUrl = this.cachedData.settings.gasUrl;
+    if (!gasUrl || !navigator.onLine) return;
+
+    clearTimeout(this.bgPushTimer);
+    this.bgPushTimer = setTimeout(() => {
+      GasSync.syncToCloud(gasUrl, { silent: true }).catch(err => {
+        console.warn('Background auto push error:', err);
+      });
+    }, 1500); // 1.5 秒防抖
   },
 
   async resetDefaultData() {
@@ -1056,6 +1155,7 @@ const App = {
       await DB.resetToDefault();
       this.closeModal();
       this.showToast('已重設為預設展示資料', 'success');
+      this.triggerBackgroundSyncPush();
     }
   },
 
@@ -1063,6 +1163,7 @@ const App = {
     if (confirm('確定要刪除這筆紀錄嗎？')) {
       await DB.delete(collection, id);
       this.showToast('已成功刪除', 'success');
+      this.triggerBackgroundSyncPush();
     }
   },
 

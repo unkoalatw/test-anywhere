@@ -1,7 +1,18 @@
-// Google Apps Script (GAS) 雲端通訊與試算表同步模組
+// Google Apps Script (GAS) 雲端通訊與高頻背景同步模組 (Background Cloud Sync Engine)
 const GasSync = {
   isSyncing: false,
   lastSyncTime: null,
+  syncStatus: 'idle', // 'idle' | 'syncing' | 'synced' | 'error' | 'offline'
+  listeners: [],
+
+  subscribeStatus(fn) {
+    this.listeners.push(fn);
+  },
+
+  notifyStatus(status, detail = '') {
+    this.syncStatus = status;
+    this.listeners.forEach(fn => fn(status, detail));
+  },
 
   /**
    * 測試 GAS 伺服器連線狀態
@@ -50,13 +61,15 @@ const GasSync = {
   /**
    * 將本地完整成績資料推送到 Google 試算表 (Push)
    * @param {string} url 
+   * @param {Object} options 
    * @returns {Promise<Object>}
    */
-  async syncToCloud(url) {
-    if (!url) throw new Error('尚未設定 GAS Web App 網址');
-    if (this.isSyncing) throw new Error('同步處理中，請稍候...');
+  async syncToCloud(url, options = {}) {
+    if (!url) return;
+    if (this.isSyncing) return;
 
     this.isSyncing = true;
+    this.notifyStatus('syncing', '正在同步至雲端試算表...');
     try {
       const localData = await DB.exportAllData();
       const payload = {
@@ -66,7 +79,11 @@ const GasSync = {
 
       const result = await this.postRequest(url, payload);
       this.lastSyncTime = new Date();
+      this.notifyStatus('synced', '雲端同步完成');
       return result;
+    } catch (err) {
+      this.notifyStatus('error', err.message);
+      if (!options.silent) throw err;
     } finally {
       this.isSyncing = false;
     }
@@ -75,22 +92,28 @@ const GasSync = {
   /**
    * 從 Google 試算表拉取資料至本地 (Pull)
    * @param {string} url 
+   * @param {Object} options
    * @returns {Promise<Object>}
    */
-  async pullFromCloud(url) {
-    if (!url) throw new Error('尚未設定 GAS Web App 網址');
-    if (this.isSyncing) throw new Error('同步處理中，請稍候...');
+  async pullFromCloud(url, options = {}) {
+    if (!url) return;
+    if (this.isSyncing) return;
 
     this.isSyncing = true;
+    this.notifyStatus('syncing', '正在從雲端拉取最新數據...');
     try {
       const payload = { action: 'pull' };
       const result = await this.postRequest(url, payload);
 
-      if (result.status === 'success' && result.data) {
+      if (result && result.status === 'success' && result.data) {
         await DB.importAllData(result.data);
         this.lastSyncTime = new Date();
+        this.notifyStatus('synced', '最新雲端數據已就緒');
       }
       return result;
+    } catch (err) {
+      this.notifyStatus('error', err.message);
+      if (!options.silent) throw err;
     } finally {
       this.isSyncing = false;
     }

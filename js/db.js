@@ -291,26 +291,58 @@ const DB = {
     };
   },
 
-  // 匯入完整 JSON 資料
+  // 匯入完整 JSON 資料 (含健全性校驗與標準結構修復)
   async importAllData(payload) {
     if (!payload || typeof payload !== 'object') {
       throw new Error('無效的備份檔案格式');
     }
 
-    if (payload.quizzes && Array.isArray(payload.quizzes)) {
-      await this.bulkPut('quizzes', payload.quizzes);
+    if (this.useLocalStorage) {
+      if (Array.isArray(payload.quizzes)) localStorage.setItem('CAP_quizzes', JSON.stringify(payload.quizzes));
+      if (Array.isArray(payload.termExams)) localStorage.setItem('CAP_termExams', JSON.stringify(payload.termExams));
+      if (Array.isArray(payload.mockExams)) localStorage.setItem('CAP_mockExams', JSON.stringify(payload.mockExams));
+      if (Array.isArray(payload.targetSchools)) localStorage.setItem('CAP_targetSchools', JSON.stringify(payload.targetSchools));
+      if (payload.settings) localStorage.setItem('CAP_settings', JSON.stringify(payload.settings));
+      this.notify('all', 'import', null);
+      return true;
     }
-    if (payload.termExams && Array.isArray(payload.termExams)) {
-      await this.bulkPut('termExams', payload.termExams);
+
+    if (Array.isArray(payload.quizzes)) {
+      await this.clear('quizzes');
+      if (payload.quizzes.length > 0) await this.bulkPut('quizzes', payload.quizzes);
     }
-    if (payload.mockExams && Array.isArray(payload.mockExams)) {
-      await this.bulkPut('mockExams', payload.mockExams);
+    if (Array.isArray(payload.termExams)) {
+      await this.clear('termExams');
+      if (payload.termExams.length > 0) await this.bulkPut('termExams', payload.termExams);
     }
-    if (payload.targetSchools && Array.isArray(payload.targetSchools)) {
+    if (Array.isArray(payload.mockExams)) {
+      await this.clear('mockExams');
+      const cleanMocks = payload.mockExams.map((m, idx) => ({
+        id: m.id ? String(m.id) : `mock_${Date.now()}_${idx}`,
+        title: m.title ? String(m.title) : '模擬考評量',
+        date: m.date || new Date().toISOString().slice(0, 10),
+        organizer: m.organizer || '模擬考',
+        scope: m.scope || '全範圍',
+        district: m.district || 'KEELUNG_TAIPEI',
+        subjects: m.subjects || {
+          CHINESE: { notation: 'B' },
+          ENGLISH: { notation: 'B' },
+          MATH: { notation: 'B' },
+          SOCIAL: { notation: 'B' },
+          SCIENCE: { notation: 'B' },
+          WRITING: { grade: 4 }
+        },
+        notes: m.notes || ''
+      }));
+      if (cleanMocks.length > 0) await this.bulkPut('mockExams', cleanMocks);
+    }
+    if (Array.isArray(payload.targetSchools) && payload.targetSchools.length > 0) {
+      await this.clear('targetSchools');
       await this.bulkPut('targetSchools', payload.targetSchools);
     }
     if (payload.settings) {
-      await this.put('settings', { id: 'main', ...payload.settings });
+      const curSettings = (await this.get('settings', 'main')) || {};
+      await this.put('settings', { id: 'main', ...curSettings, ...payload.settings });
     }
 
     this.notify('all', 'import', null);
