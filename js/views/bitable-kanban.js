@@ -37,6 +37,20 @@ const BitableKanban = {
     });
 
     let html = `
+      <!-- 各科掌握度堆疊分佈長條圖 (Stacked Bar Chart) -->
+      <div class="dashboard-card p-4 mb-5">
+        <div class="card-header flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <i data-lucide="bar-chart-3" class="w-4 h-4 text-success"></i>
+            <h3 class="font-bold text-xs text-primary">各科單元掌握度堆疊分佈 (長條圖)</h3>
+          </div>
+          <span class="text-3xs text-muted">精熟 vs 基礎 vs 待加強</span>
+        </div>
+        <div class="chart-container" style="height: 180px; position: relative;">
+          <canvas id="kanban-chart-mastery-stack"></canvas>
+        </div>
+      </div>
+
       <div class="kanban-toolbar mb-4 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <span class="text-xs text-muted">看板分組依據：</span>
@@ -120,6 +134,10 @@ const BitableKanban = {
     html += `</div>`;
     container.innerHTML = html;
     if (window.lucide) lucide.createIcons();
+
+    setTimeout(() => {
+      ChartEngine.renderKanbanMasteryStackedBar('kanban-chart-mastery-stack', quizzes);
+    }, 50);
   },
 
   /**

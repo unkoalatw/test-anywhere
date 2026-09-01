@@ -25,6 +25,35 @@ const BitableGallery = {
     items.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     let html = `
+      <!-- 錯題視覺化統計分佈：圓餅圖 (歸因佔比) + 柱狀直方圖 (分科頻率) -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div class="dashboard-card p-3.5">
+          <div class="card-header flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <i data-lucide="pie-chart" class="w-4 h-4 text-warning"></i>
+              <h3 class="font-bold text-xs text-primary">錯題盲點歸因佔比 (圓餅圖)</h3>
+            </div>
+            <span class="text-3xs text-muted">歸因分析</span>
+          </div>
+          <div class="chart-container" style="height: 180px; position: relative;">
+            <canvas id="gallery-chart-error-pie"></canvas>
+          </div>
+        </div>
+
+        <div class="dashboard-card p-3.5">
+          <div class="card-header flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <i data-lucide="bar-chart-2" class="w-4 h-4 text-primary-blue"></i>
+              <h3 class="font-bold text-xs text-primary">各科錯題與標記頻率 (直方長條圖)</h3>
+            </div>
+            <span class="text-3xs text-muted">弱點科目定位</span>
+          </div>
+          <div class="chart-container" style="height: 180px; position: relative;">
+            <canvas id="gallery-chart-subject-errors"></canvas>
+          </div>
+        </div>
+      </div>
+
       <div class="gallery-toolbar mb-4 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-2">
           <!-- 科目過濾 -->
@@ -135,6 +164,11 @@ const BitableGallery = {
     html += `</div>`;
     container.innerHTML = html;
     if (window.lucide) lucide.createIcons();
+
+    setTimeout(() => {
+      ChartEngine.renderErrorTagsBreakdownChart('gallery-chart-error-pie', quizzes);
+      ChartEngine.renderSubjectErrorFrequencyBarChart('gallery-chart-subject-errors', quizzes);
+    }, 50);
   },
 
   onFilterChange(type, value) {

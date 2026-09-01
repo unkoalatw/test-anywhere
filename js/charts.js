@@ -413,7 +413,7 @@ const ChartEngine = {
   },
 
   /**
-   * 5. 錯題歸因統計長條/圓餅圖
+   * 5. 錯題歸因統計圓餅/甜甜圈圖
    */
   renderErrorTagsBreakdownChart(canvasId, quizzes = []) {
     this.destroyChart(canvasId);
@@ -438,7 +438,6 @@ const ChartEngine = {
     tags.sort((a, b) => b.count - a.count);
 
     if (tags.length === 0) {
-      // 若尚無錯題標籤
       tags.push({ name: '尚無錯題標籤紀錄', count: 1, color: '#4B5563' });
     }
 
@@ -450,7 +449,8 @@ const ChartEngine = {
           data: tags.map(t => t.count),
           backgroundColor: tags.map(t => t.color),
           borderColor: '#161922',
-          borderWidth: 2
+          borderWidth: 2,
+          hoverOffset: 6
         }]
       },
       options: {
@@ -459,11 +459,307 @@ const ChartEngine = {
         plugins: {
           legend: {
             position: 'right',
-            labels: { color: this.theme.textColor, font: { family: this.theme.fontFamily, size: 12 }, usePointStyle: true }
+            labels: { color: this.theme.textColor, font: { family: this.theme.fontFamily, size: 11 }, usePointStyle: true, boxWidth: 8 }
+          },
+          tooltip: {
+            callbacks: {
+              label: (item) => ` ${item.label}: ${item.raw} 次 (${Math.round((item.raw / (quizzes.length || 1)) * 100)}%)`
+            }
           }
         },
-        cutout: '65%'
+        cutout: '68%'
+      }
+    });
+  },
+
+  /**
+   * 6. 小考得分率常模分佈直方圖 (Histogram / Distribution Column Chart)
+   */
+  renderScoreDistributionHistogram(canvasId, quizzes = []) {
+    this.destroyChart(canvasId);
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    // 統計 5 個得分率區間計數
+    const bins = [
+      { label: '<60% (待加強)', count: 0, color: '#EF4444' },
+      { label: '60~69% (基礎)', count: 0, color: '#F59E0B' },
+      { label: '70~79% (穩健)', count: 0, color: '#3B82F6' },
+      { label: '80~89% (良好)', count: 0, color: '#10B981' },
+      { label: '90~100% (精熟)', count: 0, color: '#8B5CF6' }
+    ];
+
+    quizzes.forEach(q => {
+      const max = q.maxScore || 100;
+      const rate = Math.round(((q.score || 0) / max) * 100);
+      if (rate < 60) bins[0].count++;
+      else if (rate < 70) bins[1].count++;
+      else if (rate < 80) bins[2].count++;
+      else if (rate < 90) bins[3].count++;
+      else bins[4].count++;
+    });
+
+    this.chartInstances[canvasId] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: bins.map(b => b.label),
+        datasets: [{
+          label: '測驗次數',
+          data: bins.map(b => b.count),
+          backgroundColor: bins.map(b => b.color),
+          borderRadius: 6,
+          borderSkipped: false,
+          barPercentage: 0.65
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ` 次數: ${ctx.raw} 次 (佔比 ${quizzes.length ? Math.round((ctx.raw / quizzes.length) * 100) : 0}%)`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: this.theme.textColor, font: { family: this.theme.fontFamily, size: 11 } }
+          },
+          y: {
+            grid: { color: this.theme.gridColor },
+            ticks: { color: this.theme.textColor, stepSize: 1, precision: 0 },
+            suggestedMax: 5
+          }
+        }
+      }
+    });
+  },
+
+  /**
+   * 7. 各科門檻對比水平長條圖 (Horizontal Benchmark Bar Chart)
+   */
+  renderSubjectBenchmarkBarChart(canvasId, latestMock, targetSchool) {
+    this.destroyChart(canvasId);
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    const subKeys = ['CHINESE', 'ENGLISH', 'MATH', 'SOCIAL', 'SCIENCE'];
+    const labels = ['國文', '英文', '數學', '社會', '自然'];
+
+    const currentRanks = subKeys.map(k => {
+      if (!latestMock || !latestMock.subjects) return 2;
+      return ScoringEngine.getNotationRank(latestMock.subjects[k]?.notation || 'B');
+    });
+
+    const targetRanks = subKeys.map(k => {
+      if (!targetSchool || !targetSchool.subjectTargets) return 6;
+      return ScoringEngine.getNotationRank(targetSchool.subjectTargets[k] || 'A');
+    });
+
+    const rankToLabel = (val) => {
+      const map = { 7: 'A++', 6: 'A+', 5: 'A', 4: 'B++', 3: 'B+', 2: 'B', 1: 'C' };
+      return map[val] || '';
+    };
+
+    this.chartInstances[canvasId] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: '本次實得標示',
+            data: currentRanks,
+            backgroundColor: '#3B82F6',
+            borderRadius: 4,
+            barPercentage: 0.65
+          },
+          {
+            label: `目標門檻 (${targetSchool ? targetSchool.shortName : '第一志願'})`,
+            data: targetRanks,
+            backgroundColor: 'rgba(245, 158, 11, 0.4)',
+            borderColor: '#F59E0B',
+            borderWidth: 1.5,
+            borderRadius: 4,
+            barPercentage: 0.65
+          }
+        ]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { color: this.theme.textColor, font: { family: this.theme.fontFamily, size: 11 }, usePointStyle: true, boxWidth: 8 }
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ` ${ctx.dataset.label}: ${rankToLabel(ctx.raw)} (${ctx.raw}點)`
+            }
+          }
+        },
+        scales: {
+          x: {
+            min: 0,
+            max: 7,
+            grid: { color: this.theme.gridColor },
+            ticks: {
+              color: this.theme.textColor,
+              stepSize: 1,
+              callback: (val) => rankToLabel(val) || ''
+            }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: '#F3F4F6', font: { family: this.theme.fontFamily, weight: 'bold' } }
+          }
+        }
+      }
+    });
+  },
+
+  /**
+   * 8. 各科錯題累積頻率直方長條圖 (Subject Error Frequency Bar Chart)
+   */
+  renderSubjectErrorFrequencyBarChart(canvasId, quizzes = []) {
+    this.destroyChart(canvasId);
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    const subMap = {};
+    CONSTANTS.SUBJECTS.forEach(s => { subMap[s.id] = { name: s.name, count: 0, color: s.color }; });
+
+    quizzes.forEach(q => {
+      const sId = q.subject || 'CHINESE';
+      if (subMap[sId]) {
+        // 若有錯題標籤或訂正狀態為 need_help/uncorrected 算入錯題統計
+        const errCount = (Array.isArray(q.errorTags) && q.errorTags.length > 0) ? q.errorTags.length : (q.score < (q.maxScore || 100) ? 1 : 0);
+        subMap[sId].count += errCount;
+      }
+    });
+
+    const activeSubs = Object.values(subMap);
+
+    this.chartInstances[canvasId] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: activeSubs.map(s => s.name),
+        datasets: [{
+          label: '錯題 / 待加強標記次數',
+          data: activeSubs.map(s => s.count),
+          backgroundColor: activeSubs.map(s => s.color || '#3B82F6'),
+          borderRadius: 6,
+          barPercentage: 0.6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ` 累積錯題/標記: ${ctx.raw} 項`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: this.theme.textColor, font: { family: this.theme.fontFamily } }
+          },
+          y: {
+            grid: { color: this.theme.gridColor },
+            ticks: { color: this.theme.textColor, stepSize: 1, precision: 0 },
+            suggestedMax: 4
+          }
+        }
+      }
+    });
+  },
+
+  /**
+   * 9. 各科掌握度堆疊分佈長條圖 (Kanban Mastery Stacked Bar Chart)
+   */
+  renderKanbanMasteryStackedBar(canvasId, quizzes = []) {
+    this.destroyChart(canvasId);
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return;
+
+    const subjects = CONSTANTS.SUBJECTS;
+    const labels = subjects.map(s => s.name);
+
+    const masteredData = [];
+    const basicData = [];
+    const needWorkData = [];
+
+    subjects.forEach(s => {
+      const subQuizzes = quizzes.filter(q => q.subject === s.id);
+      let m = 0, b = 0, n = 0;
+      subQuizzes.forEach(q => {
+        const rate = Math.round(((q.score || 0) / (q.maxScore || 100)) * 100);
+        if (rate >= 85) m++;
+        else if (rate >= 70) b++;
+        else n++;
+      });
+      masteredData.push(m);
+      basicData.push(b);
+      needWorkData.push(n);
+    });
+
+    this.chartInstances[canvasId] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: '精熟 (>=85%)',
+            data: masteredData,
+            backgroundColor: '#10B981',
+            borderRadius: 4
+          },
+          {
+            label: '基礎 (70~84%)',
+            data: basicData,
+            backgroundColor: '#3B82F6',
+            borderRadius: 4
+          },
+          {
+            label: '待加強 (<70%)',
+            data: needWorkData,
+            backgroundColor: '#EF4444',
+            borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { color: this.theme.textColor, font: { family: this.theme.fontFamily, size: 11 }, usePointStyle: true, boxWidth: 8 }
+          }
+        },
+        scales: {
+          x: {
+            stacked: true,
+            grid: { display: false },
+            ticks: { color: this.theme.textColor }
+          },
+          y: {
+            stacked: true,
+            grid: { color: this.theme.gridColor },
+            ticks: { color: this.theme.textColor, stepSize: 1, precision: 0 },
+            suggestedMax: 3
+          }
+        }
       }
     });
   }
 };
+

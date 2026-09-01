@@ -269,7 +269,7 @@ const BitableDashboard = {
             <div class="card-header flex items-center justify-between mb-2">
               <div class="flex items-center gap-2">
                 <i data-lucide="trending-up" class="w-4 h-4 text-success"></i>
-                <h3 class="font-bold text-sm text-primary">歷次模考積點跨越走勢</h3>
+                <h3 class="font-bold text-sm text-primary">歷次模考積點跨越走勢 (折線圖)</h3>
               </div>
               <span class="text-xs text-muted">對照志願門檻線</span>
             </div>
@@ -283,7 +283,7 @@ const BitableDashboard = {
             <div class="card-header flex items-center justify-between mb-2">
               <div class="flex items-center gap-2">
                 <i data-lucide="line-chart" class="w-4 h-4 text-primary-purple"></i>
-                <h3 class="font-bold text-sm text-primary">小考單元得分率進步軌跡</h3>
+                <h3 class="font-bold text-sm text-primary">小考單元得分率進步軌跡 (折線圖)</h3>
               </div>
               <select id="select-quiz-trend-sub" class="select-sm" onchange="BitableDashboard.onQuizTrendSubjectChange(this.value)">
                 <option value="ALL" ${this.currentQuizTrendSub === 'ALL' ? 'selected' : ''}>全部科目</option>
@@ -292,6 +292,53 @@ const BitableDashboard = {
             </div>
             <div class="chart-container" style="height: 250px; position: relative;">
               <canvas id="chart-quiz-trend"></canvas>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 多維統計分析矩陣：長條圖、直方圖、圓餅圖 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+          <!-- 圖表 3: 各科門檻對比水平長條圖 -->
+          <div class="dashboard-card">
+            <div class="card-header flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <i data-lucide="bar-chart-horizontal" class="w-4 h-4 text-primary-blue"></i>
+                <h3 class="font-bold text-sm text-primary">五科門檻對比 (長條圖)</h3>
+              </div>
+              <span class="text-2xs text-muted">實得 vs 目標</span>
+            </div>
+            <div class="chart-container" style="height: 220px; position: relative;">
+              <canvas id="chart-subject-benchmark"></canvas>
+            </div>
+          </div>
+
+          <!-- 圖表 4: 小考得分率分佈直方圖 -->
+          <div class="dashboard-card">
+            <div class="card-header flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <i data-lucide="bar-chart-2" class="w-4 h-4 text-success"></i>
+                <h3 class="font-bold text-sm text-primary">成績區間常模 (直方圖)</h3>
+              </div>
+              <span class="text-2xs text-muted">5 等第區間分佈</span>
+            </div>
+            <div class="chart-container" style="height: 220px; position: relative;">
+              <canvas id="chart-score-histogram"></canvas>
+            </div>
+          </div>
+
+          <!-- 圖表 5: 錯題歸因統計圓餅圖 -->
+          <div class="dashboard-card">
+            <div class="card-header flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <i data-lucide="pie-chart" class="w-4 h-4 text-warning"></i>
+                <h3 class="font-bold text-sm text-primary">錯題歸因佔比 (圓餅圖)</h3>
+              </div>
+              <span class="text-2xs text-muted">盲點根因診斷</span>
+            </div>
+            <div class="chart-container" style="height: 220px; position: relative;">
+              <canvas id="chart-error-doughnut"></canvas>
             </div>
           </div>
 
@@ -347,6 +394,9 @@ const BitableDashboard = {
       ChartEngine.renderMockTrajectoryChart('chart-mock-trajectory', mockExams, activeTargets);
       ChartEngine.renderTargetGapRadarChart('chart-radar-gap', latestMock, primaryTarget);
       ChartEngine.renderQuizUnitTrendChart('chart-quiz-trend', quizzes, this.currentQuizTrendSub);
+      ChartEngine.renderSubjectBenchmarkBarChart('chart-subject-benchmark', latestMock, primaryTarget);
+      ChartEngine.renderScoreDistributionHistogram('chart-score-histogram', quizzes);
+      ChartEngine.renderErrorTagsBreakdownChart('chart-error-doughnut', quizzes);
     }, 50);
   },
 
