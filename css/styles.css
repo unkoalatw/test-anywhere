@@ -203,9 +203,17 @@ body {
   backdrop-filter: blur(8px);
 }
 
+svg.lucide, i[data-lucide] {
+  display: inline-block !important;
+  vertical-align: middle !important;
+  flex-shrink: 0 !important;
+}
+
 /* 模組切換按鈕群組 */
 .module-tabs, .view-tabs {
-  display: inline-flex;
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
   background-color: var(--bg-canvas);
   padding: 3px;
   border-radius: var(--radius-md);
@@ -221,8 +229,10 @@ body {
   padding: 0.35rem 0.85rem;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  white-space: nowrap !important;
   gap: 0.4rem;
   transition: var(--transition-fast);
 }
