@@ -188,6 +188,48 @@ const BitableDashboard = {
           </div>
         ` : ''}
 
+        <!-- 核心觀念盲點複習專區 (Spaced-Repetition Blindspot Digest) -->
+        ${(() => {
+          const blindspots = [
+            ...mockExams.filter(m => m.blindspot).map(m => ({ type: '模考', title: m.title, text: m.blindspot, date: m.date, color: '#3B82F6' })),
+            ...quizzes.filter(q => q.blindspot).map(q => {
+              const s = CONSTANTS.SUBJECTS.find(sub => sub.id === q.subject) || { name: q.subject, color: '#8B5CF6' };
+              return { type: s.name, title: q.unitName, text: q.blindspot, date: q.date, color: s.color };
+            }),
+            ...termExams.filter(t => t.blindspot).map(t => ({ type: '段考', title: t.termName, text: t.blindspot, date: t.date, color: '#10B981' }))
+          ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+          if (blindspots.length === 0) return '';
+
+          return `
+            <div class="p-3.5 rounded-lg border border-warning/40 bg-warning/5 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="lightbulb" class="w-4 h-4 text-warning"></i>
+                  <h3 class="font-bold text-xs text-primary">考前 3 分鐘核心盲點間隔複習 (${blindspots.length} 則)</h3>
+                </div>
+                <button class="text-3xs text-warning hover:underline font-medium" onclick="App.switchView('gallery'); BitableGallery.onlyBlindspots = true; App.refreshCurrentView();">
+                  進入畫廊深度複習 ➔
+                </button>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                ${blindspots.slice(0, 6).map(b => `
+                  <div class="p-2.5 rounded bg-surface/90 border border-border/70 flex items-start gap-2 hover:border-warning/50 transition-colors">
+                    <span class="px-1.5 py-0.5 rounded text-3xs font-bold shrink-0 mt-0.5" style="background: ${b.color}20; color: ${b.color}; border: 1px solid ${b.color}40;">
+                      ${b.type}
+                    </span>
+                    <div class="flex-1 min-w-0">
+                      <div class="text-2xs text-muted truncate">${b.title}</div>
+                      <div class="text-xs text-primary font-medium mt-0.5 leading-snug">${b.text}</div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        })()}
+
         <!-- 志願落點與雷達差距診斷區塊 -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           

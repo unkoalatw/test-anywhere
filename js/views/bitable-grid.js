@@ -117,6 +117,7 @@ const BitableGrid = {
               </th>
               <th>錯題歸因標籤</th>
               <th>訂正狀態</th>
+              <th class="text-warning">💡 核心盲點 (複習破口)</th>
               <th>備註與筆記</th>
               <th class="text-center w-20">操作</th>
             </tr>
@@ -163,6 +164,9 @@ const BitableGrid = {
           </td>
           <td><div class="tags-container flex flex-wrap gap-1">${tagsHtml || '<span class="text-muted text-xs">無標籤</span>'}</div></td>
           <td><span class="status-badge ${status.class}">${status.text}</span></td>
+          <td class="text-xs font-medium max-w-xs text-warning/90 truncate" title="${q.blindspot || ''}">
+            ${q.blindspot ? `💡 ${q.blindspot}` : '<span class="text-muted">-</span>'}
+          </td>
           <td class="text-sm text-secondary max-w-xs truncate" title="${q.notes || ''}">${q.notes || '-'}</td>
           <td class="text-center">
             <div class="action-btn-group">
@@ -222,6 +226,7 @@ const BitableGrid = {
           </div>
 
           ${tagsHtml ? `<div class="flex flex-wrap gap-1 mb-2">${tagsHtml}</div>` : ''}
+          ${q.blindspot ? `<div class="text-2xs text-warning bg-amber-500/10 border border-amber-500/30 p-2 rounded mb-2 font-medium">💡 <b>盲點：</b>${q.blindspot}</div>` : ''}
           ${q.notes ? `<div class="text-2xs text-secondary bg-surface/60 p-2 rounded mb-2">${q.notes}</div>` : ''}
 
           <div class="flex items-center justify-between pt-2 border-t border-border/50 text-2xs text-muted">
@@ -358,7 +363,8 @@ const BitableGrid = {
 
       html += `
           </div>
-          ${exam.notes ? `<div class="term-notes mt-2.5 text-xs text-muted"><i data-lucide="file-text" class="w-3.5 h-3.5 inline mr-1 text-secondary"></i>${exam.notes}</div>` : ''}
+          ${exam.blindspot ? `<div class="term-blindspot mt-2.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-warning font-medium"><i data-lucide="lightbulb" class="w-3.5 h-3.5 inline mr-1 text-warning"></i><b>段考盲點複習：</b>${exam.blindspot}</div>` : ''}
+          ${exam.notes ? `<div class="term-notes mt-2 text-xs text-muted"><i data-lucide="file-text" class="w-3.5 h-3.5 inline mr-1 text-secondary"></i>${exam.notes}</div>` : ''}
         </div>
       `;
     });
@@ -449,6 +455,7 @@ const BitableGrid = {
               <span>•</span>
               <span>${exam.scope || '全範圍'}</span>
             </div>
+            ${exam.blindspot ? `<div class="text-3xs text-warning bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded mt-1.5 font-medium inline-block"><i data-lucide="lightbulb" class="w-2.5 h-2.5 inline mr-1 text-warning"></i><b>盲點：</b>${exam.blindspot}</div>` : ''}
           </td>
           <td class="font-mono text-sm text-secondary">${exam.date}</td>
           
@@ -603,6 +610,7 @@ const BitableGrid = {
             </div>
           </div>
 
+          ${exam.blindspot ? `<div class="text-2xs text-warning bg-amber-500/10 border border-amber-500/30 p-2 rounded mb-2 font-medium">💡 <b>模考盲點：</b>${exam.blindspot}</div>` : ''}
           ${exam.notes ? `<div class="text-2xs text-secondary bg-surface/60 p-2 rounded mb-2">${exam.notes}</div>` : ''}
 
           <div class="flex items-center justify-end gap-2 pt-2 border-t border-border/40 text-2xs">

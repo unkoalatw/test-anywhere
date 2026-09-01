@@ -324,6 +324,7 @@ const DB = {
         organizer: m.organizer || '模擬考',
         scope: m.scope || '全範圍',
         district: m.district || 'KEELUNG_TAIPEI',
+        blindspot: m.blindspot || '',
         subjects: m.subjects || {
           CHINESE: { notation: 'B' },
           ENGLISH: { notation: 'B' },

@@ -171,7 +171,7 @@ function setupMockSheetHeader(sheet) {
     '社會等級', '社會答對',
     '自然等級', '自然答對',
     '寫作級分',
-    '會考總標示', '會考總積點', '會考總積分', '備註與策略筆記'
+    '會考總標示', '會考總積點', '會考總積分', '核心盲點複習重點', '備註與策略筆記'
   ];
   applyHeaderStyle(sheet, headers);
 }
@@ -186,7 +186,7 @@ function setupTermSheetHeader(sheet) {
     '理化實得', '理化班均', '理化高標', '理化低標',
     '生物實得', '生物班均', '生物高標', '生物低標',
     '地科實得', '地科班均', '地科高標', '地科低標',
-    '地理實得', '歷史實得', '公民實得', '寫作級分', '段考備註'
+    '地理實得', '歷史實得', '公民實得', '寫作級分', '關鍵盲點與漏洞', '段考備註'
   ];
   applyHeaderStyle(sheet, headers);
 }
@@ -195,7 +195,7 @@ function setupTermSheetHeader(sheet) {
 function setupQuizSheetHeader(sheet) {
   var headers = [
     'ID', '測驗日期', '科目代碼', '科目名稱', '單元章節名稱', '測驗類型',
-    '實得分數', '滿分標準', '得分率%', '錯題歸因標籤', '訂正狀態', '筆記與心得'
+    '實得分數', '滿分標準', '得分率%', '錯題歸因標籤', '訂正狀態', '核心盲點複習重點', '筆記與心得'
   ];
   applyHeaderStyle(sheet, headers);
 }
@@ -272,6 +272,7 @@ function syncMockExamsSheet(items) {
       summaryTier,
       totalPoints,
       30 + (countA * 6) + (countB * 4) + (countC * 2) > 0 ? (countA * 6 + countB * 4 + countC * 2) : 30,
+      item.blindspot || '',
       item.notes || ''
     ];
   });
@@ -315,6 +316,7 @@ function syncTermExamsSheet(items) {
       getSub('HISTORY').score || '',
       getSub('CIVICS').score || '',
       getSub('WRITING').score || '',
+      item.blindspot || '',
       item.notes || ''
     ];
   });
@@ -359,6 +361,7 @@ function syncQuizzesSheet(items) {
       rate + '%',
       tags,
       item.correctionStatus || 'corrected',
+      item.blindspot || '',
       item.notes || ''
     ];
   });
@@ -385,12 +388,12 @@ function syncTargetSchoolsSheet(items) {
       item.id || '',
       item.name || '',
       item.shortName || '',
-      item.district || '',
-      item.cutoffPoints || '',
-      item.cutoffCredits || '',
-      item.targetTierSummary || '',
+      item.district || 'KEELUNG_TAIPEI',
+      item.cutoffPoints || 30,
+      item.cutoffCredits || 30,
+      item.targetTierSummary || '5A',
       JSON.stringify(item.subjectTargets || {}),
-      item.description || ''
+      item.notes || ''
     ];
   });
   
@@ -402,30 +405,35 @@ function syncTargetSchoolsSheet(items) {
 
 function syncSettingsSheet(settings) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = getOrCreateSheet(ss, '系統設定與備份');
+  var sheet = getOrCreateSheet(ss, '系統設定');
   
   var lastRow = sheet.getLastRow();
   if (lastRow > 1) {
     sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
   }
   
-  var now = new Date().toISOString();
-  var rows = [
-    ['STUDENT_NAME', settings.studentName || '', now],
-    ['SCHOOL_NAME', settings.schoolName || '', now],
-    ['GRADE_CLASS', settings.gradeClass || '', now],
-    ['TARGET_DISTRICT', settings.district || 'KEELUNG_TAIPEI', now],
-    ['TARGET_SCHOOL_IDS', Array.isArray(settings.targetSchools) ? settings.targetSchools.join(',') : '', now],
-    ['THEME', settings.theme || 'dark', now]
-  ];
+  var keys = Object.keys(settings || {});
+  var nowStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
   
-  sheet.getRange(2, 1, rows.length, 3).setValues(rows);
-  sheet.autoResizeColumns(1, 3);
+  var rows = keys.map(function(k) {
+    var val = settings[k];
+    return [
+      k,
+      typeof val === 'object' ? JSON.stringify(val) : String(val),
+      nowStr
+    ];
+  });
+  
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+    sheet.autoResizeColumns(1, rows[0].length);
+  }
 }
 
 // ==========================================
-// 讀取全部試算表數據 (Fetch All Sheets Data)
+// 數據拉取 (Fetch Functions)
 // ==========================================
+
 function fetchAllSheetsData() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var result = {
@@ -439,7 +447,7 @@ function fetchAllSheetsData() {
   // 1. 讀取小考
   var quizSheet = ss.getSheetByName('小考評量紀錄');
   if (quizSheet && quizSheet.getLastRow() > 1) {
-    var qValues = quizSheet.getRange(2, 1, quizSheet.getLastRow() - 1, 12).getValues();
+    var qValues = quizSheet.getRange(2, 1, quizSheet.getLastRow() - 1, 13).getValues();
     result.quizzes = qValues.filter(function(r) {
       return (r[0] !== '' || r[1] !== '' || r[4] !== '');
     }).map(function(r, idx) {
@@ -453,7 +461,8 @@ function fetchAllSheetsData() {
         maxScore: (r[7] !== '' && !isNaN(r[7])) ? Number(r[7]) : 100,
         errorTags: r[9] ? String(r[9]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [],
         correctionStatus: String(r[10] || 'corrected'),
-        notes: r[11] ? String(r[11]) : ''
+        blindspot: r[11] ? String(r[11]) : '',
+        notes: r[12] ? String(r[12]) : ''
       };
     });
   }
@@ -461,7 +470,7 @@ function fetchAllSheetsData() {
   // 2. 讀取模考
   var mockSheet = ss.getSheetByName('模擬考會考專區');
   if (mockSheet && mockSheet.getLastRow() > 1) {
-    var mValues = mockSheet.getRange(2, 1, mockSheet.getLastRow() - 1, 25).getValues();
+    var mValues = mockSheet.getRange(2, 1, mockSheet.getLastRow() - 1, 26).getValues();
     result.mockExams = mValues.filter(function(r) {
       return (r[0] !== '' || r[1] !== '' || r[2] !== '');
     }).map(function(r, idx) {
@@ -487,7 +496,50 @@ function fetchAllSheetsData() {
           SCIENCE: { notation: scNot, rawCorrect: (r[19] !== '' && !isNaN(r[19])) ? Number(r[19]) : undefined },
           WRITING: { grade: (r[20] !== '' && !isNaN(r[20])) ? Number(r[20]) : 0 }
         },
-        notes: r[24] ? String(r[24]) : ''
+        blindspot: r[24] ? String(r[24]) : '',
+        notes: r[25] ? String(r[25]) : ''
+      };
+    });
+  }
+  
+  // 3. 讀取定期段考
+  var termSheet = ss.getSheetByName('定期段考評量');
+  if (termSheet && termSheet.getLastRow() > 1) {
+    var tValues = termSheet.getRange(2, 1, termSheet.getLastRow() - 1, 33).getValues();
+    result.termExams = tValues.filter(function(r) {
+      return (r[0] !== '' || r[1] !== '' || r[2] !== '');
+    }).map(function(r, idx) {
+      var id = r[0] ? String(r[0]) : ('term_' + new Date().getTime() + '_' + idx);
+      var getSubObj = function(scoreIdx, avgIdx, highIdx, lowIdx) {
+        if (r[scoreIdx] === '' || isNaN(r[scoreIdx])) return undefined;
+        return {
+          score: Number(r[scoreIdx]),
+          classAvg: (r[avgIdx] !== '' && !isNaN(r[avgIdx])) ? Number(r[avgIdx]) : null,
+          highBenchmark: (r[highIdx] !== '' && !isNaN(r[highIdx])) ? Number(r[highIdx]) : null,
+          lowBenchmark: (r[lowIdx] !== '' && !isNaN(r[lowIdx])) ? Number(r[lowIdx]) : null
+        };
+      };
+      
+      var subs = {};
+      var ch = getSubObj(7, 8, 9, 10); if (ch) subs.CHINESE = ch;
+      var en = getSubObj(11, 12, 13, 14); if (en) subs.ENGLISH = en;
+      var ma = getSubObj(15, 16, 17, 18); if (ma) subs.MATH = ma;
+      var pc = getSubObj(19, 20, 21, 22); if (pc) subs.PHYS_CHEM = pc;
+      var bi = getSubObj(23, 24, 25, 26); if (bi) subs.BIOLOGY = bi;
+      var es = getSubObj(27, 28, 29, 30); if (es) subs.EARTH_SCI = es;
+      if (r[31] !== '' && !isNaN(r[31])) subs.GEOGRAPHY = { score: Number(r[31]) };
+      
+      return {
+        id: id,
+        termName: r[1] ? String(r[1]) : '定期段考',
+        date: formatDate(r[2]) || new Date().toISOString().slice(0, 10),
+        classRank: (r[3] !== '' && !isNaN(r[3])) ? Number(r[3]) : null,
+        gradeRank: (r[4] !== '' && !isNaN(r[4])) ? Number(r[4]) : null,
+        totalScore: (r[5] !== '' && !isNaN(r[5])) ? Number(r[5]) : 0,
+        averageScore: (r[6] !== '' && !isNaN(r[6])) ? Number(r[6]) : 0,
+        subjects: subs,
+        blindspot: r[31] ? String(r[31]) : '',
+        notes: r[32] ? String(r[32]) : ''
       };
     });
   }

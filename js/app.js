@@ -405,6 +405,15 @@ const App = {
               </div>
             </div>
 
+            <!-- 核心盲點與複習重點 -->
+            <div>
+              <label class="form-label text-warning flex items-center gap-1.5">
+                <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
+                <span>本次模考關鍵盲點與複習核心 (考前速覽)</span>
+              </label>
+              <input type="text" id="mock-blindspot" class="form-input border-warning/40 focus:border-warning" value="${item ? (item.blindspot || '') : ''}" placeholder="例如：英文閱讀題組時間分配、數學幾何輔助線構思、自然電磁感應右手定則判斷..." />
+            </div>
+
             <!-- 策略備註 -->
             <div>
               <label class="form-label">模考總結與弱點筆記</label>
@@ -540,6 +549,7 @@ const App = {
       organizer: document.getElementById('mock-organizer').value,
       scope: document.getElementById('mock-scope').value,
       district: document.getElementById('mock-district').value,
+      blindspot: document.getElementById('mock-blindspot')?.value || '',
       subjects: {
         CHINESE: { notation: getSubNotation('CHINESE'), rawCorrect: chCor ? Number(chCor) : undefined },
         ENGLISH: { notation: getSubNotation('ENGLISH'), readingCorrect: rCor ? Number(rCor) : undefined, listeningCorrect: lCor ? Number(lCor) : undefined, weightedScore: enWScore },
@@ -643,6 +653,15 @@ const App = {
               </select>
             </div>
 
+            <!-- 核心觀念盲點與複習重點 -->
+            <div>
+              <label class="form-label text-warning flex items-center gap-1.5">
+                <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
+                <span>核心觀念盲點與複習破口 (考前必看)</span>
+              </label>
+              <input type="text" id="quiz-blindspot" class="form-input border-warning/40 focus:border-warning font-medium" value="${item ? (item.blindspot || '') : ''}" placeholder="例如：動詞三態不規則變化、浮力沉底時支撐力不可忽略、移項變號漏負號..." />
+            </div>
+
             <div>
               <label class="form-label">備註與觀念筆記</label>
               <textarea id="quiz-notes" class="form-input" rows="2" placeholder="記錄重要公式推導、容易混淆的關鍵字...">${item ? (item.notes || '') : ''}</textarea>
@@ -674,6 +693,7 @@ const App = {
       score: Number(document.getElementById('quiz-score').value),
       maxScore: Number(document.getElementById('quiz-max-score').value || 100),
       errorTags: tags,
+      blindspot: document.getElementById('quiz-blindspot')?.value || '',
       correctionStatus: document.getElementById('quiz-correction-status').value,
       notes: document.getElementById('quiz-notes').value
     };
@@ -771,6 +791,15 @@ const App = {
               </div>
             </div>
 
+            <!-- 核心盲點與失分漏洞檢討 -->
+            <div>
+              <label class="form-label text-warning flex items-center gap-1.5">
+                <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
+                <span>段考關鍵盲點與考前漏洞檢討 (複習必背)</span>
+              </label>
+              <input type="text" id="term-blindspot" class="form-input border-warning/40 focus:border-warning font-medium" value="${item ? (item.blindspot || '') : ''}" placeholder="例如：理化電路串並聯總電阻混淆、歷史年代順序易錯、幾何證明未寫理由..." />
+            </div>
+
             <div>
               <label class="form-label">備註與檢討</label>
               <textarea id="term-notes" class="form-input" rows="2" placeholder="記錄段考整體表現、時間分配...">${item ? (item.notes || '') : ''}</textarea>
@@ -826,6 +855,7 @@ const App = {
       totalScore,
       averageScore,
       subjects,
+      blindspot: document.getElementById('term-blindspot')?.value || '',
       notes: document.getElementById('term-notes').value
     };
 

@@ -1,8 +1,9 @@
-// 飛書多維表格視圖引擎 - 錯題筆記畫廊視圖 (Gallery View Component)
+// 飛書多維表格視圖引擎 - 錯題與盲點複習畫廊視圖 (Gallery & Blindspot Review View Component)
 const BitableGallery = {
   selectedTag: 'ALL',
   selectedStatus: 'ALL',
   selectedSubject: 'ALL',
+  onlyBlindspots: false,
 
   renderGallery(containerId, quizzes = [], onEdit, onDelete) {
     const container = document.getElementById(containerId);
@@ -10,7 +11,13 @@ const BitableGallery = {
 
     let items = [...quizzes];
 
+    // 盲點總數統計
+    const totalBlindspots = quizzes.filter(q => q.blindspot && q.blindspot.trim().length > 0).length;
+
     // 篩選
+    if (this.onlyBlindspots) {
+      items = items.filter(q => q.blindspot && q.blindspot.trim().length > 0);
+    }
     if (this.selectedSubject !== 'ALL') {
       items = items.filter(q => q.subject === this.selectedSubject);
     }
@@ -54,8 +61,15 @@ const BitableGallery = {
         </div>
       </div>
 
+      <!-- 工具列與盲點快篩按鈕 -->
       <div class="gallery-toolbar mb-4 flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-2">
+          <!-- 盲點專屬複習模式切換按鈕 -->
+          <button class="btn-sm flex items-center gap-1.5 ${this.onlyBlindspots ? 'btn-primary bg-amber-500 hover:bg-amber-600 text-black font-bold' : 'btn-secondary text-warning border-warning/40'}" onclick="BitableGallery.toggleBlindspotFilter()">
+            <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
+            <span>💡 只看觀念盲點 (${totalBlindspots})</span>
+          </button>
+
           <!-- 科目過濾 -->
           <select class="select-sm" onchange="BitableGallery.onFilterChange('subject', this.value)">
             <option value="ALL" ${this.selectedSubject === 'ALL' ? 'selected' : ''}>所有考科</option>
@@ -78,7 +92,7 @@ const BitableGallery = {
         </div>
 
         <div class="text-xs text-muted">
-          共 <b class="text-secondary font-mono">${items.length}</b> 則錯題複習筆記
+          共 <b class="text-secondary font-mono">${items.length}</b> 則複習筆記
         </div>
       </div>
 
@@ -89,7 +103,7 @@ const BitableGallery = {
       html += `
         <div class="col-span-full empty-state py-12 text-center">
           <i data-lucide="book-open-check" class="w-12 h-12 text-muted mb-3 mx-auto"></i>
-          <p class="text-secondary text-sm">無符合篩選條件的錯題筆記</p>
+          <p class="text-secondary text-sm">無符合篩選條件的錯題或盲點筆記</p>
         </div>
       `;
     } else {
@@ -128,12 +142,23 @@ const BitableGallery = {
               </h4>
 
               <!-- 錯題歸因標籤 -->
-              <div class="flex flex-wrap gap-1.5 mb-3">
+              <div class="flex flex-wrap gap-1.5 mb-2.5">
                 ${tagsHtml || '<span class="text-3xs text-muted">無歸因標籤</span>'}
               </div>
 
+              <!-- 💡 核心觀念盲點高亮區塊 (Spaced Repetition Review Card) -->
+              ${item.blindspot ? `
+                <div class="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs mb-2.5 flex items-start gap-2">
+                  <i data-lucide="lightbulb" class="w-4 h-4 shrink-0 text-warning mt-0.5"></i>
+                  <div>
+                    <div class="text-3xs uppercase font-bold text-warning tracking-wider mb-0.5">💡 核心觀念盲點 (考前複習)</div>
+                    <div class="text-primary font-medium leading-relaxed">${item.blindspot}</div>
+                  </div>
+                </div>
+              ` : ''}
+
               <!-- 筆記內文區塊 -->
-              <div class="gallery-note-box p-2.5 rounded bg-surface/80 border border-border/50 text-xs text-secondary mb-3 min-h-[60px]">
+              <div class="gallery-note-box p-2.5 rounded bg-surface/80 border border-border/50 text-xs text-secondary mb-3 min-h-[50px]">
                 ${item.notes ? item.notes : '<span class="text-muted italic">無詳細筆記內容...</span>'}
               </div>
             </div>
@@ -169,6 +194,11 @@ const BitableGallery = {
       ChartEngine.renderErrorTagsBreakdownChart('gallery-chart-error-pie', quizzes);
       ChartEngine.renderSubjectErrorFrequencyBarChart('gallery-chart-subject-errors', quizzes);
     }, 50);
+  },
+
+  toggleBlindspotFilter() {
+    this.onlyBlindspots = !this.onlyBlindspots;
+    App.refreshCurrentView();
   },
 
   onFilterChange(type, value) {
