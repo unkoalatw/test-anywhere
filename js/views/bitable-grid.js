@@ -423,7 +423,7 @@ const BitableGrid = {
               <th>寫作</th>
               <th class="text-center">會考總標示</th>
               <th class="text-right">總積點</th>
-              <th class="text-right">總積分</th>
+              <th class="text-right">基北區排名 / 市排名預估</th>
               <th class="text-center w-20">操作</th>
             </tr>
           </thead>
@@ -433,6 +433,7 @@ const BitableGrid = {
     sorted.forEach(exam => {
       const metrics = ScoringEngine.calculateMockMetrics(exam, currentDistrict);
       const sub = exam.subjects || {};
+      const rankEst = metrics.rankEstimate || {};
 
       const renderBadge = (notation) => {
         const not = CONSTANTS.CAP_NOTATIONS.find(n => n.notation === notation) || { color: '#6B7280', notation: notation || '-' };
@@ -508,8 +509,14 @@ const BitableGrid = {
           <!-- 總積點 -->
           <td class="text-right font-bold font-mono text-primary-blue text-base">${metrics.totalPoints} 點</td>
 
-          <!-- 總積分 -->
-          <td class="text-right font-mono text-secondary">${metrics.totalCredits} 分</td>
+          <!-- 基北區排名 / 市排名預估 -->
+          <td class="text-right">
+            <div class="font-mono font-bold text-xs text-primary">${rankEst.districtRankRange || '-'}</div>
+            <div class="text-3xs text-muted">
+              <span class="badge-success-subtle px-1 py-0.2">${rankEst.districtPR || '-'}</span>
+              <span title="${rankEst.cityRankTaipei} • ${rankEst.cityRankNewTaipei}">${rankEst.percentileText || ''}</span>
+            </div>
+          </td>
 
           <td class="text-center">
             <div class="action-btn-group">
@@ -527,12 +534,13 @@ const BitableGrid = {
 
     html += `</tbody></table></div>`;
 
-    // 2. 手機版模考卡片流 (Mobile Card List)
+    // 2. 手機版模考卡片流 (Mobile Card List with Keelung-Taipei / City Ranks)
     html += `<div class="mobile-mock-cards md:hidden space-y-3">`;
 
     sorted.forEach(exam => {
       const metrics = ScoringEngine.calculateMockMetrics(exam, currentDistrict);
       const sub = exam.subjects || {};
+      const rankEst = metrics.rankEstimate || {};
 
       const renderBadge = (label, notation, extra = '') => {
         const not = CONSTANTS.CAP_NOTATIONS.find(n => n.notation === notation) || { color: '#6B7280', notation: notation || '-' };
@@ -564,6 +572,21 @@ const BitableGrid = {
             <div class="text-right flex-shrink-0">
               <div class="font-bold font-mono text-success text-sm">${metrics.summaryTier}</div>
               <div class="text-2xs font-mono font-bold text-primary-blue">${metrics.totalPoints} 點 <span class="text-muted font-normal">(${metrics.totalCredits}分)</span></div>
+            </div>
+          </div>
+
+          <!-- 北北基考區排名與市排名仿真預估卡片列 -->
+          <div class="p-2 rounded bg-surface/80 border border-border/60 mb-2.5 space-y-1">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-primary flex items-center gap-1">
+                <i data-lucide="map-pin" class="w-3.5 h-3.5 text-primary-blue"></i>
+                基北全區排名
+              </span>
+              <span class="font-mono font-bold text-warning">${rankEst.districtRankRange || '-'} <span class="text-2xs text-success">(${rankEst.districtPR || '-'})</span></span>
+            </div>
+            <div class="flex items-center justify-between text-3xs text-muted pt-1 border-t border-border/40">
+              <span>${rankEst.cityRankTaipei || ''}</span>
+              <span>${rankEst.cityRankNewTaipei || ''}</span>
             </div>
           </div>
 

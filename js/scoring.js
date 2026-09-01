@@ -243,6 +243,9 @@ const ScoringEngine = {
       summaryTier += ` (作 ${writingGrade} 級分)`;
     }
 
+    // 北北基會考/全模高仿真考區排名與市排名運算
+    const rankEstimate = this.estimateKeelungTaipeiRank(totalPoints, countA, countPlus, writingGrade, mockExam.manualRank);
+
     return {
       summaryTier,
       countA,
@@ -253,8 +256,95 @@ const ScoringEngine = {
       totalCredits,
       writingGrade,
       subjectDetail,
-      district
+      district,
+      rankEstimate
     };
+  },
+
+  /**
+   * 北北基 (基北區) 會考/模擬考常模常態分佈排名仿真估算
+   * 基準常模：基北區總考生約 63,000 人 (台北市 ~21,500人, 新北市 ~36,500人, 基隆市 ~5,000人)
+   */
+  estimateKeelungTaipeiRank(totalPoints, countA, countPlus, writingGrade = 5, manualRank = null) {
+    if (manualRank && manualRank.districtRank) {
+      const dRank = parseInt(manualRank.districtRank);
+      const pr = Math.round((1 - (dRank / 63000)) * 1000) / 10;
+      return {
+        isManual: true,
+        districtRankRange: `第 ${dRank.toLocaleString()} 名`,
+        districtRankMedian: dRank,
+        districtPR: `PR ${Math.max(1, Math.min(99.9, pr))}`,
+        cityRankTaipei: `北市約第 ${Math.round(dRank * 0.45).toLocaleString()} 名`,
+        cityRankNewTaipei: `新北約第 ${Math.round(dRank * 0.50).toLocaleString()} 名`,
+        percentileText: `前 ${(dRank / 63000 * 100).toFixed(1)}%`,
+        targetTierText: this.getSchoolTierByPoints(totalPoints)
+      };
+    }
+
+    let minRank = 1, maxRank = 200, pr = 99.8, tpeMin = 1, tpeMax = 110, ntpMin = 1, ntpMax = 80;
+
+    if (totalPoints >= 35.8) {
+      minRank = 1; maxRank = 350; pr = 99.6;
+      tpeMin = 1; tpeMax = 200; ntpMin = 1; ntpMax = 130;
+    } else if (totalPoints >= 34.8) {
+      minRank = 351; maxRank = 850; pr = 99.0;
+      tpeMin = 201; tpeMax = 510; ntpMin = 131; ntpMax = 310;
+    } else if (totalPoints >= 33.8) {
+      minRank = 851; maxRank = 1650; pr = 97.8;
+      tpeMin = 511; tpeMax = 990; ntpMin = 311; ntpMax = 610;
+    } else if (totalPoints >= 32.8) {
+      minRank = 1651; maxRank = 2750; pr = 96.0;
+      tpeMin = 991; tpeMax = 1650; ntpMin = 611; ntpMax = 1010;
+    } else if (totalPoints >= 31.8) {
+      minRank = 2751; maxRank = 4100; pr = 94.0;
+      tpeMin = 1651; tpeMax = 2450; ntpMin = 1011; ntpMax = 1520;
+    } else if (totalPoints >= 30.6) {
+      minRank = 4101; maxRank = 5800; pr = 91.5;
+      tpeMin = 2451; tpeMax = 3450; ntpMin = 1521; ntpMax = 2150;
+    } else if (totalPoints >= 28.6) {
+      minRank = 5801; maxRank = 8600; pr = 87.5;
+      tpeMin = 3451; tpeMax = 5100; ntpMin = 2151; ntpMax = 3200;
+    } else if (totalPoints >= 25.6) {
+      minRank = 8601; maxRank = 13800; pr = 80.0;
+      tpeMin = 5101; tpeMax = 8200; ntpMin = 3201; ntpMax = 5100;
+    } else if (totalPoints >= 22.6) {
+      minRank = 13801; maxRank = 21500; pr = 68.0;
+      tpeMin = 8201; tpeMax = 12800; ntpMin = 5101; ntpMax = 8000;
+    } else if (totalPoints >= 18.6) {
+      minRank = 21501; maxRank = 31000; pr = 54.0;
+      tpeMin = 12801; tpeMax = 18500; ntpMin = 8001; ntpMax = 11500;
+    } else if (totalPoints >= 14.6) {
+      minRank = 31001; maxRank = 43000; pr = 38.0;
+      tpeMin = 18501; tpeMax = 25500; ntpMin = 11501; ntpMax = 16000;
+    } else {
+      minRank = 43001; maxRank = 62000; pr = 20.0;
+      tpeMin = 25501; tpeMax = 37000; ntpMin = 16001; ntpMax = 23000;
+    }
+
+    const median = Math.round((minRank + maxRank) / 2);
+    const pct = ((median / 63000) * 100).toFixed(1);
+
+    return {
+      isManual: false,
+      districtRankRange: `約第 ${minRank.toLocaleString()} ~ ${maxRank.toLocaleString()} 名`,
+      districtRankMedian: median,
+      districtPR: `PR ${pr.toFixed(1)}`,
+      cityRankTaipei: `北市估約 ${tpeMin.toLocaleString()} ~ ${tpeMax.toLocaleString()} 名`,
+      cityRankNewTaipei: `新北估約 ${ntpMin.toLocaleString()} ~ ${ntpMax.toLocaleString()} 名`,
+      percentileText: `全基北區前 ${pct}%`,
+      targetTierText: this.getSchoolTierByPoints(totalPoints)
+    };
+  },
+
+  getSchoolTierByPoints(points) {
+    if (points >= 34.6) return '第一志願群 (建中 / 北一女 / 師大附中)';
+    if (points >= 32.8) return '頂尖名校群 (成功 / 中山 / 松山)';
+    if (points >= 30.6) return '前段公立高中 (市立大同 / 政大附中)';
+    if (points >= 27.6) return '指標公立高中 (大直 / 板橋 / 麗山 / 和平)';
+    if (points >= 23.6) return '優質社區高中 (內湖 / 海山 / 中和 / 新莊)';
+    if (points >= 19.6) return '公立高中 / 熱門國立高職 (永春 / 百齡 / 陽明)';
+    if (points >= 14.6) return '公立高中職 (育成 / 華江 / 三民 / 清水)';
+    return '多元進路評估';
   },
 
   /**
