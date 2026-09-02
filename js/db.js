@@ -229,6 +229,30 @@ const DB = {
     });
   },
 
+  // 清空特定 store 所有資料
+  async clear(storeName) {
+    if (this.useLocalStorage) {
+      localStorage.setItem(`CAP_${storeName}`, JSON.stringify([]));
+      this.notify(storeName, 'clear', null);
+      return true;
+    }
+
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = this.dbInstance.transaction([storeName], 'readwrite');
+        const store = transaction.objectStore(storeName);
+        const req = store.clear();
+        req.onsuccess = () => {
+          this.notify(storeName, 'clear', null);
+          resolve(true);
+        };
+        req.onerror = (e) => reject(e.target.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  },
+
   // 刪除單筆資料
   async delete(storeName, id) {
     if (this.useLocalStorage) {
