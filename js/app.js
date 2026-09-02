@@ -1149,7 +1149,16 @@ const App = {
       const res = await GasSync.pullFromCloud(url);
       await this.loadAllData();
       this.refreshCurrentView();
-      this.showToast((res && res.message) ? res.message : '拉取完成！已載入最新成績', 'success');
+
+      const totalCount = (this.cachedData.mockExams?.length || 0) + (this.cachedData.quizzes?.length || 0) + (this.cachedData.termExams?.length || 0);
+
+      if (res && res.importResult && res.importResult.status === 'cloud_empty') {
+        this.showToast('⚠️ 雲端目前為 0 筆資料。已保留本機現有紀錄，若電腦端有資料請在電腦端先按【同步至雲端】！', 'warning', 8000);
+      } else if (totalCount === 0) {
+        this.showToast('雲端目前尚無成績紀錄（0 筆）。請先在有成績的裝置上點擊【同步至雲端 (Push)】！', 'warning', 7000);
+      } else {
+        this.showToast(`拉取完成！已成功同步載入 ${totalCount} 筆最新成績`, 'success');
+      }
     } catch (err) {
       this.showToast(`拉取失敗: ${err.message}`, 'danger');
     }

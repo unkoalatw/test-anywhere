@@ -321,27 +321,43 @@ const DB = {
       throw new Error('無效的備份檔案格式');
     }
 
+    const incomingMocks = Array.isArray(payload.mockExams) ? payload.mockExams : [];
+    const incomingQuizzes = Array.isArray(payload.quizzes) ? payload.quizzes : [];
+    const incomingTerms = Array.isArray(payload.termExams) ? payload.termExams : [];
+    const totalIncoming = incomingMocks.length + incomingQuizzes.length + incomingTerms.length;
+
+    const curMocks = await this.getAll('mockExams');
+    const curQuizzes = await this.getAll('quizzes');
+    const curTerms = await this.getAll('termExams');
+    const totalLocal = curMocks.length + curQuizzes.length + curTerms.length;
+
+    // 若雲端為空 (0筆) 但本地有成績，不要清空本地，保留現存紀錄
+    if (totalIncoming === 0 && totalLocal > 0) {
+      console.warn('雲端試算表目前為空，保留本地成績資料。');
+      return { status: 'cloud_empty', incomingCount: 0, localCount: totalLocal };
+    }
+
     if (this.useLocalStorage) {
-      if (Array.isArray(payload.quizzes)) localStorage.setItem('CAP_quizzes', JSON.stringify(payload.quizzes));
-      if (Array.isArray(payload.termExams)) localStorage.setItem('CAP_termExams', JSON.stringify(payload.termExams));
-      if (Array.isArray(payload.mockExams)) localStorage.setItem('CAP_mockExams', JSON.stringify(payload.mockExams));
+      if (incomingQuizzes.length > 0 || totalLocal === 0) localStorage.setItem('CAP_quizzes', JSON.stringify(incomingQuizzes));
+      if (incomingTerms.length > 0 || totalLocal === 0) localStorage.setItem('CAP_termExams', JSON.stringify(incomingTerms));
+      if (incomingMocks.length > 0 || totalLocal === 0) localStorage.setItem('CAP_mockExams', JSON.stringify(incomingMocks));
       if (Array.isArray(payload.targetSchools)) localStorage.setItem('CAP_targetSchools', JSON.stringify(payload.targetSchools));
       if (payload.settings) localStorage.setItem('CAP_settings', JSON.stringify(payload.settings));
       this.notify('all', 'import', null);
-      return true;
+      return { status: 'success', incomingCount: totalIncoming };
     }
 
-    if (Array.isArray(payload.quizzes)) {
+    if (incomingQuizzes.length > 0 || totalLocal === 0) {
       await this.clear('quizzes');
-      if (payload.quizzes.length > 0) await this.bulkPut('quizzes', payload.quizzes);
+      if (incomingQuizzes.length > 0) await this.bulkPut('quizzes', incomingQuizzes);
     }
-    if (Array.isArray(payload.termExams)) {
+    if (incomingTerms.length > 0 || totalLocal === 0) {
       await this.clear('termExams');
-      if (payload.termExams.length > 0) await this.bulkPut('termExams', payload.termExams);
+      if (incomingTerms.length > 0) await this.bulkPut('termExams', incomingTerms);
     }
-    if (Array.isArray(payload.mockExams)) {
+    if (incomingMocks.length > 0 || totalLocal === 0) {
       await this.clear('mockExams');
-      const cleanMocks = payload.mockExams.map((m, idx) => ({
+      const cleanMocks = incomingMocks.map((m, idx) => ({
         id: m.id ? String(m.id) : `mock_${Date.now()}_${idx}`,
         title: m.title ? String(m.title) : '模擬考評量',
         date: m.date || new Date().toISOString().slice(0, 10),
@@ -371,6 +387,6 @@ const DB = {
     }
 
     this.notify('all', 'import', null);
-    return true;
+    return { status: 'success', incomingCount: totalIncoming };
   }
 };

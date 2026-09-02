@@ -854,6 +854,36 @@ svg.lucide, i[data-lucide] {
   }
 }
 
+@media (max-width: 639.98px) {
+  .app-navbar {
+    padding: 0 0.75rem;
+    height: 52px;
+  }
+  .brand-logo {
+    width: 28px;
+    height: 28px;
+  }
+  .brand-title {
+    font-size: 0.875rem;
+  }
+  .sub-navbar {
+    padding: 0.35rem 0.5rem;
+    height: auto;
+  }
+  .module-tabs {
+    width: 100%;
+    display: flex !important;
+    justify-content: space-between;
+    gap: 0.25rem;
+  }
+  .module-tab-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 0.35rem 0.3rem !important;
+    font-size: 0.725rem !important;
+  }
+}
+
 /* ==========================================================================
    手機版專屬優化 (Mobile Native-Feel Optimization & Touch Enhancements)
    ========================================================================== */

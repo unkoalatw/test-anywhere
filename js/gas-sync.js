@@ -106,7 +106,8 @@ const GasSync = {
       const result = await this.postRequest(url, payload);
 
       if (result && result.status === 'success' && result.data) {
-        await DB.importAllData(result.data);
+        const importRes = await DB.importAllData(result.data);
+        result.importResult = importRes;
         this.lastSyncTime = new Date();
         this.notifyStatus('synced', '最新雲端數據已就緒');
       }
