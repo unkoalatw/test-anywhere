@@ -15,8 +15,14 @@ const App = {
   async init() {
     console.log('Initializing Academic Tracker System...');
     
-    // 1. 初始化本地資料庫 (IndexedDB / LocalStorage)
-    await DB.init();
+    // 0. 初始化認證引擎與當前使用者
+    if (window.Auth) {
+      Auth.init();
+    }
+    const currentUser = (window.Auth && Auth.getCurrentUser()) || null;
+
+    // 1. 初始化本地資料庫 (指定當前使用者專屬獨立庫)
+    await DB.init(currentUser ? currentUser.email : 'littletiger0815@gmail.com');
     await this.loadAllData();
 
     // 2. 註冊資料變更事件監聽
@@ -50,6 +56,22 @@ const App = {
     this.initBackgroundSync();
   },
 
+  // 當切換登入使用者時重新載入資料庫並刷新視圖
+  async onUserSwitched(user) {
+    await this.loadAllData();
+    this.refreshCurrentView();
+    // 切換後自動嘗試從雲端拉取該帳號最新資料
+    const currentUrl = this.cachedData.settings?.gasUrl;
+    if (currentUrl && navigator.onLine) {
+      GasSync.pullFromCloud(currentUrl, { silent: true }).then(async (res) => {
+        if (res && res.data) {
+          await this.loadAllData();
+          this.refreshCurrentView();
+        }
+      }).catch(() => {});
+    }
+  },
+
   async loadAllData() {
     const [quizzes, termExams, mockExams, targetSchools, settings] = await Promise.all([
       DB.getAll('quizzes'),
@@ -73,14 +95,19 @@ const App = {
 
   updateUserHeader() {
     const st = this.cachedData.settings || {};
+    const currentUser = (window.Auth && Auth.getCurrentUser()) || null;
     const nameEl = document.getElementById('header-student-name');
     const schEl = document.getElementById('header-school-info');
-    if (nameEl) nameEl.textContent = st.studentName ? st.studentName : '考生檔案';
+    if (nameEl) {
+      nameEl.textContent = currentUser?.studentName || st.studentName || '考生檔案';
+    }
     if (schEl) {
-      if (st.schoolName || st.gradeClass) {
-        schEl.textContent = [st.schoolName, st.gradeClass].filter(Boolean).join(' • ');
+      if (currentUser?.email) {
+        schEl.textContent = currentUser.email;
+      } else if (st.schoolName || st.gradeClass) {
+        schEl.textContent = `${st.schoolName || ''} ${st.gradeClass || ''}`.trim();
       } else {
-        schEl.textContent = '點擊設定填寫基本資料';
+        schEl.textContent = '點擊切換帳號或設定';
       }
     }
   },
@@ -961,6 +988,30 @@ const App = {
 
           <div class="modal-body py-4 space-y-5 max-h-[75vh] overflow-y-auto">
             
+            <!-- 當前登入帳號狀態與切換 (多租戶隔離保護) -->
+            <div class="p-3 rounded-lg bg-primary-blue/10 border border-primary-blue/30 flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-full bg-primary-blue/20 text-primary-blue flex items-center justify-center font-bold text-base shadow-sm">
+                  <i data-lucide="user-check" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <div class="text-xs font-bold text-primary flex items-center gap-1.5">
+                    <span>${(window.Auth && Auth.getCurrentUser()?.studentName) || settings.studentName || '小虎'}</span>
+                    <span class="badge-success text-3xs">已登入專屬資料庫</span>
+                  </div>
+                  <div class="text-3xs font-mono text-muted">${(window.Auth && Auth.getCurrentUser()?.email) || 'littletiger0815@gmail.com'}</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button type="button" class="btn-secondary text-2xs py-1.5 px-2.5" onclick="App.openAuthModal('login')">
+                  <i data-lucide="refresh-cw" class="w-3 h-3 inline mr-1 text-primary-blue"></i>切換帳號
+                </button>
+                <button type="button" class="btn-secondary text-2xs py-1.5 px-2.5 text-rose-400 hover:text-rose-300" onclick="Auth.logout()">
+                  <i data-lucide="log-out" class="w-3 h-3 inline mr-1"></i>登出
+                </button>
+              </div>
+            </div>
+
             <!-- 學生基本檔案 -->
             <div class="space-y-3">
               <h4 class="text-xs font-bold text-secondary uppercase tracking-wider">個人檔案設定</h4>
@@ -1678,6 +1729,189 @@ const App = {
       return 'C';
     }
     return 'B';
+  },
+
+  // ==========================================
+  // 6. 使用者帳號登入與註冊彈窗 (Multi-Tenant Auth Modal)
+  // ==========================================
+  openAuthModal(defaultTab = 'login') {
+    const currentUser = (window.Auth && Auth.getCurrentUser()) || null;
+    const offlineUsers = (window.Auth && Auth.getOfflineUsers()) || [];
+
+    const modalHtml = `
+      <div class="modal-backdrop" onclick="App.closeModal(event)">
+        <div class="modal-card modal-md" onclick="event.stopPropagation()">
+          <div class="modal-header flex items-center justify-between pb-3 border-b border-border">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-lg bg-primary-blue/20 text-primary-blue flex items-center justify-center font-bold">
+                <i data-lucide="shield-check" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-sm text-primary">學業成績系統 • 帳號登入與註冊</h3>
+                <p class="text-3xs text-muted">多使用者獨立資料庫 • 數據嚴格分區隔離</p>
+              </div>
+            </div>
+            <button class="btn-icon" onclick="App.closeModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+
+          <div class="modal-body py-4 space-y-4">
+            <!-- 登入/註冊分頁標籤 -->
+            <div class="flex rounded-lg bg-surface border border-border p-1">
+              <button type="button" id="tab-btn-login" class="flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${defaultTab === 'login' ? 'bg-primary-blue text-white shadow-sm' : 'text-muted hover:text-primary'}" onclick="App.switchAuthTab('login')">
+                <i data-lucide="log-in" class="w-3.5 h-3.5 inline mr-1"></i>帳號登入
+              </button>
+              <button type="button" id="tab-btn-register" class="flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${defaultTab === 'register' ? 'bg-primary-blue text-white shadow-sm' : 'text-muted hover:text-primary'}" onclick="App.switchAuthTab('register')">
+                <i data-lucide="user-plus" class="w-3.5 h-3.5 inline mr-1"></i>註冊新帳號 (全新獨立空間)
+              </button>
+            </div>
+
+            <!-- 當前登入狀態提示 -->
+            ${currentUser ? `
+              <div class="p-2.5 rounded-lg bg-primary-blue/10 border border-primary-blue/30 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <div class="text-xs">
+                    <span class="text-muted">目前使用中：</span>
+                    <span class="font-bold text-primary">${currentUser.studentName || '學生'}</span>
+                    <span class="font-mono text-3xs text-muted block">${currentUser.email}</span>
+                  </div>
+                </div>
+                <button type="button" class="btn-secondary text-3xs text-rose-400 hover:text-rose-300 py-1 px-2" onclick="Auth.logout()">
+                  <i data-lucide="log-out" class="w-3 h-3 inline mr-0.5"></i>登出
+                </button>
+              </div>
+            ` : ''}
+
+            <!-- 登入/註冊表單 -->
+            <form id="auth-form" onsubmit="App.handleAuthSubmit(event)" class="space-y-3">
+              <div>
+                <label class="form-label">帳號 Email <span class="text-rose-400">*</span></label>
+                <input type="email" id="auth-email" class="form-input text-xs" required placeholder="例如: littletiger0815@gmail.com" value="${defaultTab === 'login' ? (currentUser?.email || 'littletiger0815@gmail.com') : ''}" />
+              </div>
+
+              <div>
+                <label class="form-label">登入密碼 <span class="text-rose-400">*</span></label>
+                <div class="relative">
+                  <input type="password" id="auth-password" class="form-input text-xs pr-9" required placeholder="請輸入密碼" value="${defaultTab === 'login' && (!currentUser || currentUser.email === 'littletiger0815@gmail.com') ? 'little07928' : ''}" />
+                  <button type="button" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-primary" onclick="App.togglePasswordVisibility('auth-password')">
+                    <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div id="auth-field-student-name" class="${defaultTab === 'register' ? 'block' : 'hidden'}">
+                <label class="form-label">學生姓名 (選填)</label>
+                <input type="text" id="auth-student-name" class="form-input text-xs" placeholder="例如: 小虎、陳小明" />
+              </div>
+
+              <div class="pt-2">
+                <button type="submit" id="auth-submit-btn" class="btn-primary w-full py-2 text-xs font-bold justify-center shadow-lg">
+                  <i data-lucide="${defaultTab === 'login' ? 'log-in' : 'user-plus'}" class="w-4 h-4 mr-1"></i>
+                  <span id="auth-submit-text">${defaultTab === 'login' ? '立即登入專屬成績庫' : '立即註冊並啟用獨立空間'}</span>
+                </button>
+              </div>
+            </form>
+
+            <!-- 曾在此裝置登入過的帳號快速切換 -->
+            ${offlineUsers.length > 1 ? `
+              <div class="pt-2 border-t border-border">
+                <div class="text-3xs text-muted mb-1.5 flex items-center justify-between">
+                  <span>此裝置記住的帳號 (點擊快速切換)：</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  ${offlineUsers.map(u => `
+                    <button type="button" class="text-2xs px-2.5 py-1 rounded bg-surface border border-border hover:border-primary-blue text-secondary hover:text-primary flex items-center gap-1.5 transition-colors" onclick="App.quickSwitchUser('${u.email}')">
+                      <i data-lucide="user" class="w-3 h-3 text-primary-blue"></i>
+                      <span>${u.studentName || u.email.split('@')[0]}</span>
+                      <span class="text-3xs text-muted">(${u.email.slice(0, 8)}...)</span>
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+
+            <!-- 提示與隱私安全 -->
+            <div class="p-2.5 rounded-lg bg-surface/50 border border-border/60 text-3xs text-muted space-y-1">
+              <div class="font-bold text-secondary flex items-center gap-1">
+                <i data-lucide="lock" class="w-3 h-3 text-primary-blue"></i> 多人使用資料隔離說明：
+              </div>
+              <p>• 每個帳號在本機均享有 100% 隔離的獨立資料庫，切換帳號時完全看不到他人的成績。</p>
+              <p>• 雲端 Google 試算表亦依帳號自動分區，多人同步時互不覆蓋、互不漏存。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modal-host').innerHTML = modalHtml;
+    if (window.lucide) lucide.createIcons();
+  },
+
+  switchAuthTab(tab) {
+    const loginBtn = document.getElementById('tab-btn-login');
+    const registerBtn = document.getElementById('tab-btn-register');
+    const studentNameField = document.getElementById('auth-field-student-name');
+    const submitText = document.getElementById('auth-submit-text');
+
+    if (tab === 'login') {
+      loginBtn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-md transition-all bg-primary-blue text-white shadow-sm';
+      registerBtn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-md transition-all text-muted hover:text-primary';
+      if (studentNameField) studentNameField.classList.add('hidden');
+      if (submitText) submitText.textContent = '立即登入專屬成績庫';
+    } else {
+      registerBtn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-md transition-all bg-primary-blue text-white shadow-sm';
+      loginBtn.className = 'flex-1 py-1.5 text-xs font-semibold rounded-md transition-all text-muted hover:text-primary';
+      if (studentNameField) studentNameField.classList.remove('hidden');
+      if (submitText) submitText.textContent = '立即註冊並啟用獨立空間';
+    }
+  },
+
+  togglePasswordVisibility(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    input.type = input.type === 'password' ? 'text' : 'password';
+  },
+
+  async handleAuthSubmit(e) {
+    e.preventDefault();
+    const email = document.getElementById('auth-email').value.trim();
+    const password = document.getElementById('auth-password').value;
+    const studentNameField = document.getElementById('auth-field-student-name');
+    const isRegister = studentNameField && !studentNameField.classList.contains('hidden');
+    const studentName = document.getElementById('auth-student-name')?.value?.trim() || '';
+
+    const submitBtn = document.getElementById('auth-submit-btn');
+    submitBtn.disabled = true;
+    submitBtn.classList.add('opacity-70');
+
+    try {
+      if (isRegister) {
+        await Auth.register(email, password, studentName);
+        this.showToast(`註冊成功！已建立專屬獨立帳號：${email}`, 'success');
+      } else {
+        await Auth.login(email, password);
+        this.showToast(`登入成功！已載入專屬成績資料庫`, 'success');
+      }
+      this.closeModal();
+    } catch (err) {
+      this.showToast(err.message || '驗證失敗，請檢查帳密', 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('opacity-70');
+    }
+  },
+
+  async quickSwitchUser(email) {
+    const users = Auth.getOfflineUsers();
+    const target = users.find(u => u.email === email);
+    if (!target) return;
+    try {
+      await Auth.login(target.email, target.password);
+      this.showToast(`已切換至：${target.studentName || target.email}`, 'success');
+      this.closeModal();
+    } catch (err) {
+      this.showToast(`切換失敗: ${err.message}`, 'error');
+    }
   },
 
   // PWA 安裝觸發

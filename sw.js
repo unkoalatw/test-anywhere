@@ -1,10 +1,11 @@
-const CACHE_NAME = 'cap-score-tracker-v14';
+const CACHE_NAME = 'cap-score-tracker-v15';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
   './css/styles.css',
   './js/constants.js',
+  './js/auth.js',
   './js/db.js',
   './js/scoring.js',
   './js/charts.js',

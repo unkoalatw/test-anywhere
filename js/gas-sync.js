@@ -71,9 +71,12 @@ const GasSync = {
     this.isSyncing = true;
     this.notifyStatus('syncing', '正在同步至雲端試算表...');
     try {
+      const currentUser = (window.Auth && Auth.getCurrentUser()) || { email: 'littletiger0815@gmail.com' };
       const localData = await DB.exportAllData();
       const payload = {
         action: 'syncAll',
+        userEmail: currentUser.email,
+        password: currentUser.password || '',
         data: localData
       };
 
@@ -102,7 +105,12 @@ const GasSync = {
     this.isSyncing = true;
     this.notifyStatus('syncing', '正在從雲端拉取最新數據...');
     try {
-      const payload = { action: 'pull' };
+      const currentUser = (window.Auth && Auth.getCurrentUser()) || { email: 'littletiger0815@gmail.com' };
+      const payload = {
+        action: 'pull',
+        userEmail: currentUser.email,
+        password: currentUser.password || ''
+      };
       const result = await this.postRequest(url, payload);
 
       if (result && result.status === 'success' && result.data) {
@@ -126,8 +134,17 @@ const GasSync = {
    * @param {Object} bodyObject 
    * @returns {Promise<Object>}
    */
-  async postRequest(url, bodyObject) {
+  async postRequest(url, bodyObject = {}) {
     try {
+      // 自動補齊當前使用者身分憑證
+      if (window.Auth) {
+        const currentUser = Auth.getCurrentUser();
+        if (currentUser) {
+          if (!bodyObject.userEmail) bodyObject.userEmail = currentUser.email;
+          if (!bodyObject.password && currentUser.password) bodyObject.password = currentUser.password;
+        }
+      }
+
       const response = await fetch(url, {
         method: 'POST',
         // 極關鍵：採用 text/plain 避免觸發 OPTIONS preflight 請求，GAS 可透過 e.postData.contents 正確解析 JSON

@@ -1,9 +1,22 @@
-// 學業成績智慧彙整系統 - 本地資料庫 (IndexedDB / LocalStorage Local-First Engine)
+// 學業成績智慧彙整系統 - 本地資料庫 (IndexedDB / LocalStorage Local-First Engine - 多租戶隔離版)
 const DB = {
-  dbName: 'CAP_AcademicTracker_DB',
   dbVersion: 1,
   dbInstance: null,
+  currentUserEmail: 'littletiger0815@gmail.com',
+  useLocalStorage: false,
   listeners: [],
+
+  // 取得特定使用者的專屬獨立資料庫名稱
+  getUserDbName(email) {
+    const safe = (email || 'littletiger0815@gmail.com').trim().toLowerCase().replace(/[^a-zA-Z0-9_]/g, '_');
+    return `CAP_DB_${safe}`;
+  },
+
+  // 取得 LocalStorage 前綴
+  getStoragePrefix() {
+    const safe = (this.currentUserEmail || 'littletiger0815@gmail.com').trim().toLowerCase().replace(/[^a-zA-Z0-9_]/g, '_');
+    return `CAP_USER_${safe}_`;
+  },
 
   // 註冊資料變更監聽器
   subscribe(callback) {
@@ -16,32 +29,25 @@ const DB = {
   notify(collection, action, data) {
     this.listeners.forEach(cb => {
       try {
-        cb({ collection, action, data, timestamp: Date.now() });
+        cb({ collection, action, data, userEmail: this.currentUserEmail, timestamp: Date.now() });
       } catch (err) {
         console.error('DB notify error:', err);
       }
     });
   },
 
-  // 初始化資料庫
-  async init() {
-    // 若尚未執行過 v2 清除，自動徹底清空舊版 IndexedDB 與 LocalStorage 殘留假資料
-    const isPurged = localStorage.getItem('CAP_V2_PURGED') === 'true';
-    if (!isPurged) {
-      console.log('Purging legacy dummy data from browser cache...');
-      localStorage.clear();
-      localStorage.setItem('CAP_V2_PURGED', 'true');
-      if (window.indexedDB) {
-        await new Promise((resolve) => {
-          const delReq = indexedDB.deleteDatabase(this.dbName);
-          delReq.onsuccess = () => resolve(true);
-          delReq.onerror = () => resolve(true);
-          delReq.onblocked = () => resolve(true);
-        });
-      }
+  // 初始化當前使用者的獨立資料庫
+  async init(userEmail) {
+    if (userEmail) {
+      this.currentUserEmail = String(userEmail).trim().toLowerCase();
+    } else if (window.Auth) {
+      const u = Auth.getCurrentUser();
+      if (u && u.email) this.currentUserEmail = u.email;
     }
 
-    return new Promise((resolve, reject) => {
+    const targetDbName = this.getUserDbName(this.currentUserEmail);
+
+    return new Promise((resolve) => {
       if (!window.indexedDB) {
         console.warn('IndexedDB not supported, falling back to LocalStorage');
         this.initFallback();
@@ -49,7 +55,7 @@ const DB = {
         return;
       }
 
-      const request = indexedDB.open(this.dbName, this.dbVersion);
+      const request = indexedDB.open(targetDbName, this.dbVersion);
 
       request.onupgradeneeded = (event) => {
         const db = event.target.result;
@@ -81,30 +87,97 @@ const DB = {
 
       request.onsuccess = async (event) => {
         this.dbInstance = event.target.result;
-        // 檢查是否需導入初始展示資料
+        
+        // 若當前為主帳號 littletiger0815@gmail.com，執行舊資料安全自動移轉
+        if (this.currentUserEmail === 'littletiger0815@gmail.com') {
+          await this.migrateLegacyDataIfNeeded();
+        }
+        
         await this.checkAndSeedDefaultData();
         resolve(true);
       };
 
       request.onerror = (event) => {
-        console.error('IndexedDB open error:', event.target.error);
+        console.error('IndexedDB open error for user ' + this.currentUserEmail + ':', event.target.error);
         this.initFallback();
         resolve(true);
       };
     });
   },
 
-  // LocalStorage 回退方案
+  // 切換使用者（物理關閉當前庫並開啟新使用者的獨立資料庫）
+  async switchUser(newEmail) {
+    if (!newEmail) return;
+    const cleanEmail = String(newEmail).trim().toLowerCase();
+    if (this.dbInstance) {
+      try {
+        this.dbInstance.close();
+      } catch (e) {}
+      this.dbInstance = null;
+    }
+    this.currentUserEmail = cleanEmail;
+    await this.init(cleanEmail);
+    this.notify('all', 'switch_user', { userEmail: cleanEmail });
+    return true;
+  },
+
+  // 自動將歷史舊資料庫 (CAP_AcademicTracker_DB) 無縫移轉至主帳號 littletiger0815@gmail.com
+  async migrateLegacyDataIfNeeded() {
+    const isMigrated = localStorage.getItem('CAP_LEGACY_MIGRATED_TO_LITTLETIGER') === 'true';
+    if (isMigrated) return;
+
+    try {
+      if (window.indexedDB) {
+        const legacyReq = indexedDB.open('CAP_AcademicTracker_DB', 1);
+        const legacyDb = await new Promise((res) => {
+          legacyReq.onsuccess = () => res(legacyReq.result);
+          legacyReq.onerror = () => res(null);
+        });
+
+        if (legacyDb) {
+          const stores = ['quizzes', 'termExams', 'mockExams', 'targetSchools', 'settings'];
+          const payload = {};
+          for (const s of stores) {
+            if (legacyDb.objectStoreNames.contains(s)) {
+              payload[s] = await new Promise(r => {
+                const tx = legacyDb.transaction(s, 'readonly');
+                const req = tx.objectStore(s).getAll();
+                req.onsuccess = () => r(req.result || []);
+                req.onerror = () => r([]);
+              });
+            }
+          }
+          legacyDb.close();
+
+          const hasData = (payload.mockExams && payload.mockExams.length > 0) ||
+                          (payload.quizzes && payload.quizzes.length > 0) ||
+                          (payload.termExams && payload.termExams.length > 0);
+
+          if (hasData) {
+            console.log('Migrating legacy data to master account:', this.currentUserEmail);
+            await this.importAllData(payload);
+          }
+        }
+      }
+      localStorage.setItem('CAP_LEGACY_MIGRATED_TO_LITTLETIGER', 'true');
+    } catch (err) {
+      console.warn('Legacy migration check exception:', err);
+      localStorage.setItem('CAP_LEGACY_MIGRATED_TO_LITTLETIGER', 'true');
+    }
+  },
+
+  // LocalStorage 回退方案 (加入使用者前綴隔離)
   initFallback() {
     this.useLocalStorage = true;
-    const seeded = localStorage.getItem('CAP_TRACKER_INIT');
+    const p = this.getStoragePrefix();
+    const seeded = localStorage.getItem(`${p}INIT`);
     if (!seeded) {
-      localStorage.setItem('CAP_quizzes', JSON.stringify([]));
-      localStorage.setItem('CAP_termExams', JSON.stringify([]));
-      localStorage.setItem('CAP_mockExams', JSON.stringify([]));
-      localStorage.setItem('CAP_targetSchools', JSON.stringify(CONSTANTS.TARGET_SCHOOLS_DB));
-      localStorage.setItem('CAP_settings', JSON.stringify(SEED_DATA.settings));
-      localStorage.setItem('CAP_TRACKER_INIT', 'true');
+      localStorage.setItem(`${p}quizzes`, JSON.stringify([]));
+      localStorage.setItem(`${p}termExams`, JSON.stringify([]));
+      localStorage.setItem(`${p}mockExams`, JSON.stringify([]));
+      localStorage.setItem(`${p}targetSchools`, JSON.stringify(CONSTANTS.TARGET_SCHOOLS_DB));
+      localStorage.setItem(`${p}settings`, JSON.stringify(SEED_DATA.settings));
+      localStorage.setItem(`${p}INIT`, 'true');
     }
   },
 
@@ -126,7 +199,8 @@ const DB = {
   // 計算筆數
   async count(storeName) {
     if (this.useLocalStorage) {
-      const data = JSON.parse(localStorage.getItem(`CAP_${storeName}`) || '[]');
+      const p = this.getStoragePrefix();
+      const data = JSON.parse(localStorage.getItem(`${p}${storeName}`) || '[]');
       return Array.isArray(data) ? data.length : 1;
     }
 
@@ -142,7 +216,8 @@ const DB = {
   // 取得全部資料
   async getAll(storeName) {
     if (this.useLocalStorage) {
-      const data = localStorage.getItem(`CAP_${storeName}`);
+      const p = this.getStoragePrefix();
+      const data = localStorage.getItem(`${p}${storeName}`);
       if (!data) return [];
       const parsed = JSON.parse(data);
       return Array.isArray(parsed) ? parsed : [parsed];
@@ -160,10 +235,11 @@ const DB = {
   // 取得單筆資料
   async get(storeName, id) {
     if (this.useLocalStorage) {
+      const p = this.getStoragePrefix();
       if (storeName === 'settings') {
-        return JSON.parse(localStorage.getItem('CAP_settings') || '{}');
+        return JSON.parse(localStorage.getItem(`${p}settings`) || '{}');
       }
-      const list = JSON.parse(localStorage.getItem(`CAP_${storeName}`) || '[]');
+      const list = JSON.parse(localStorage.getItem(`${p}${storeName}`) || '[]');
       return list.find(item => item.id === id) || null;
     }
 
@@ -184,14 +260,15 @@ const DB = {
     if (!item.updatedAt) item.updatedAt = new Date().toISOString();
 
     if (this.useLocalStorage) {
+      const p = this.getStoragePrefix();
       if (storeName === 'settings') {
-        localStorage.setItem('CAP_settings', JSON.stringify(item));
+        localStorage.setItem(`${p}settings`, JSON.stringify(item));
       } else {
-        const list = JSON.parse(localStorage.getItem(`CAP_${storeName}`) || '[]');
+        const list = JSON.parse(localStorage.getItem(`${p}${storeName}`) || '[]');
         const idx = list.findIndex(i => i.id === item.id);
         if (idx >= 0) list[idx] = item;
         else list.push(item);
-        localStorage.setItem(`CAP_${storeName}`, JSON.stringify(list));
+        localStorage.setItem(`${p}${storeName}`, JSON.stringify(list));
       }
       this.notify(storeName, 'put', item);
       return item;
@@ -212,7 +289,8 @@ const DB = {
   // 批次寫入
   async bulkPut(storeName, items) {
     if (this.useLocalStorage) {
-      localStorage.setItem(`CAP_${storeName}`, JSON.stringify(items));
+      const p = this.getStoragePrefix();
+      localStorage.setItem(`${p}${storeName}`, JSON.stringify(items));
       this.notify(storeName, 'bulkPut', items);
       return items;
     }
@@ -232,7 +310,8 @@ const DB = {
   // 清空特定 store 所有資料
   async clear(storeName) {
     if (this.useLocalStorage) {
-      localStorage.setItem(`CAP_${storeName}`, JSON.stringify([]));
+      const p = this.getStoragePrefix();
+      localStorage.setItem(`${p}${storeName}`, JSON.stringify([]));
       this.notify(storeName, 'clear', null);
       return true;
     }
@@ -256,9 +335,10 @@ const DB = {
   // 刪除單筆資料
   async delete(storeName, id) {
     if (this.useLocalStorage) {
-      const list = JSON.parse(localStorage.getItem(`CAP_${storeName}`) || '[]');
+      const p = this.getStoragePrefix();
+      const list = JSON.parse(localStorage.getItem(`${p}${storeName}`) || '[]');
       const filtered = list.filter(i => i.id !== id);
-      localStorage.setItem(`CAP_${storeName}`, JSON.stringify(filtered));
+      localStorage.setItem(`${p}${storeName}`, JSON.stringify(filtered));
       this.notify(storeName, 'delete', { id });
       return true;
     }
@@ -275,10 +355,11 @@ const DB = {
     });
   },
 
-  // 清除全部資料並重設為範本
+  // 清除當前使用者資料並重設為範本
   async resetToDefault() {
     if (this.useLocalStorage) {
-      localStorage.clear();
+      const p = this.getStoragePrefix();
+      localStorage.removeItem(`${p}INIT`);
       this.initFallback();
       this.notify('all', 'reset', null);
       return true;
@@ -405,13 +486,14 @@ const DB = {
 
     // 寫入儲存
     if (this.useLocalStorage) {
-      localStorage.setItem('CAP_quizzes', JSON.stringify(mergedQuizzes));
-      localStorage.setItem('CAP_termExams', JSON.stringify(mergedTerms));
-      localStorage.setItem('CAP_mockExams', JSON.stringify(mergedMocks));
-      if (mergedSchools.length > 0) localStorage.setItem('CAP_targetSchools', JSON.stringify(mergedSchools));
+      const p = this.getStoragePrefix();
+      localStorage.setItem(`${p}quizzes`, JSON.stringify(mergedQuizzes));
+      localStorage.setItem(`${p}termExams`, JSON.stringify(mergedTerms));
+      localStorage.setItem(`${p}mockExams`, JSON.stringify(mergedMocks));
+      if (mergedSchools.length > 0) localStorage.setItem(`${p}targetSchools`, JSON.stringify(mergedSchools));
       if (payload.settings) {
-        const curSettings = JSON.parse(localStorage.getItem('CAP_settings') || '{}');
-        localStorage.setItem('CAP_settings', JSON.stringify({ ...curSettings, ...payload.settings }));
+        const curSettings = JSON.parse(localStorage.getItem(`${p}settings`) || '{}');
+        localStorage.setItem(`${p}settings`, JSON.stringify({ ...curSettings, ...payload.settings }));
       }
       this.notify('all', 'import', null);
       return { status: 'success', incomingCount: totalIncoming };

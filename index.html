@@ -46,7 +46,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- 客製化深色精緻介面樣式 -->
-  <link rel="stylesheet" href="./css/styles.css?v=14" />
+  <link rel="stylesheet" href="./css/styles.css?v=15" />
 </head>
 <body class="bg-[#0B0D11] text-[#F3F4F6]">
 
@@ -70,14 +70,19 @@
           <span id="cloud-sync-text" class="text-3xs font-mono text-muted hidden sm:inline">已連線</span>
         </div>
 
-        <!-- 學生檔案標籤 (中大螢幕顯示) -->
-        <div class="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-surface border border-border cursor-pointer hover:border-primary-blue/40 transition-colors" onclick="App.openSettingsModal()" title="點擊編輯個人檔案與設定">
+        <!-- 手機端專屬帳密/切換帳號按鈕 -->
+        <button class="p-1.5 rounded-lg bg-surface border border-border text-primary-blue sm:hidden" onclick="App.openAuthModal('login')" title="登入、註冊或切換帳號">
+          <i data-lucide="user" class="w-3.5 h-3.5"></i>
+        </button>
+
+        <!-- 學生檔案與帳號標籤 (中大螢幕顯示，點擊開啟帳號切換/個人設定) -->
+        <div class="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-surface border border-border cursor-pointer hover:border-primary-blue/40 transition-colors" onclick="App.openAuthModal('login')" title="點擊登入、註冊或切換帳號">
           <div class="w-5 h-5 rounded-full bg-primary-blue/20 text-primary-blue flex items-center justify-center font-bold text-xs">
             <i data-lucide="user" class="w-3 h-3"></i>
           </div>
           <div>
-            <div id="header-student-name" class="text-xs font-bold text-primary">考生檔案</div>
-            <div id="header-school-info" class="text-3xs text-muted">點擊設定填寫基本資料</div>
+            <div id="header-student-name" class="text-xs font-bold text-primary">小虎</div>
+            <div id="header-school-info" class="text-3xs text-muted font-mono">littletiger0815@gmail.com</div>
           </div>
         </div>
 
@@ -190,17 +195,18 @@
   <div id="toast-container"></div>
 
   <!-- 核心腳本載入順序 (含版本防快取) -->
-  <script src="./js/constants.js?v=14"></script>
-  <script src="./js/scoring.js?v=14"></script>
-  <script src="./js/db.js?v=14"></script>
-  <script src="./js/charts.js?v=14"></script>
-  <script src="./js/views/bitable-grid.js?v=14"></script>
-  <script src="./js/views/bitable-kanban.js?v=14"></script>
-  <script src="./js/views/bitable-dashboard.js?v=14"></script>
-  <script src="./js/views/bitable-gallery.js?v=14"></script>
-  <script src="./js/gas-sync.js?v=14"></script>
-  <script src="./js/export-import.js?v=14"></script>
-  <script src="./js/app.js?v=14"></script>
+  <script src="./js/constants.js?v=15"></script>
+  <script src="./js/auth.js?v=15"></script>
+  <script src="./js/scoring.js?v=15"></script>
+  <script src="./js/db.js?v=15"></script>
+  <script src="./js/charts.js?v=15"></script>
+  <script src="./js/views/bitable-grid.js?v=15"></script>
+  <script src="./js/views/bitable-kanban.js?v=15"></script>
+  <script src="./js/views/bitable-dashboard.js?v=15"></script>
+  <script src="./js/views/bitable-gallery.js?v=15"></script>
+  <script src="./js/gas-sync.js?v=15"></script>
+  <script src="./js/export-import.js?v=15"></script>
+  <script src="./js/app.js?v=15"></script>
 
 </body>
 </html>
