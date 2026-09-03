@@ -562,6 +562,8 @@ const App = {
     };
 
     await DB.put('mockExams', mockItem);
+    await this.loadAllData();
+    this.refreshCurrentView();
     BitableGrid.selectedSubject = 'ALL';
     BitableGrid.selectedFilter = 'ALL';
     BitableGrid.searchQuery = '';
@@ -699,6 +701,8 @@ const App = {
     };
 
     await DB.put('quizzes', item);
+    await this.loadAllData();
+    this.refreshCurrentView();
     BitableGrid.selectedSubject = 'ALL';
     BitableGrid.selectedFilter = 'ALL';
     BitableGrid.searchQuery = '';
@@ -860,6 +864,8 @@ const App = {
     };
 
     await DB.put('termExams', item);
+    await this.loadAllData();
+    this.refreshCurrentView();
     BitableGrid.selectedSubject = 'ALL';
     BitableGrid.selectedFilter = 'ALL';
     BitableGrid.searchQuery = '';
@@ -929,6 +935,8 @@ const App = {
     settings.targetSchools = chosen;
 
     await DB.put('settings', { id: 'main', ...settings });
+    await this.loadAllData();
+    this.refreshCurrentView();
     this.closeModal();
     this.showToast('目標志願設定儲存成功！', 'success');
     this.triggerBackgroundSyncPush();
@@ -1238,6 +1246,15 @@ const App = {
         GasSync.syncToCloud(currentUrl, { silent: true }).catch(() => {});
       }
     });
+
+    // 5. 當頁面隱藏或關閉時，立即刷出尚未推播的更新，避免因防抖未觸發而漏存
+    window.addEventListener('pagehide', () => this.flushPendingSyncPush());
+    window.addEventListener('beforeunload', () => this.flushPendingSyncPush());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        this.flushPendingSyncPush();
+      }
+    });
   },
 
   // 本地資料異動時觸發防抖背景推播至雲端 (Auto Push on Save)
@@ -1247,10 +1264,23 @@ const App = {
 
     clearTimeout(this.bgPushTimer);
     this.bgPushTimer = setTimeout(() => {
+      this.bgPushTimer = null;
       GasSync.syncToCloud(gasUrl, { silent: true }).catch(err => {
         console.warn('Background auto push error:', err);
       });
     }, 1500); // 1.5 秒防抖
+  },
+
+  // 立即刷出並送出推播 (防止手機切換 App 時被系統凍結計時器)
+  flushPendingSyncPush() {
+    if (this.bgPushTimer) {
+      clearTimeout(this.bgPushTimer);
+      this.bgPushTimer = null;
+      const gasUrl = this.cachedData.settings.gasUrl;
+      if (gasUrl && navigator.onLine) {
+        GasSync.syncToCloud(gasUrl, { silent: true }).catch(() => {});
+      }
+    }
   },
 
   async resetDefaultData() {

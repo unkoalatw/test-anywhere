@@ -405,7 +405,7 @@ function syncTargetSchoolsSheet(items) {
 
 function syncSettingsSheet(settings) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = getOrCreateSheet(ss, '系統設定');
+  var sheet = getOrCreateSheet(ss, '系統設定與備份');
   
   var lastRow = sheet.getLastRow();
   if (lastRow > 1) {
@@ -502,10 +502,10 @@ function fetchAllSheetsData() {
     });
   }
   
-  // 3. 讀取定期段考
+  // 3. 讀取定期段考 (完整 37 欄)
   var termSheet = ss.getSheetByName('定期段考評量');
   if (termSheet && termSheet.getLastRow() > 1) {
-    var tValues = termSheet.getRange(2, 1, termSheet.getLastRow() - 1, 33).getValues();
+    var tValues = termSheet.getRange(2, 1, termSheet.getLastRow() - 1, 37).getValues();
     result.termExams = tValues.filter(function(r) {
       return (r[0] !== '' || r[1] !== '' || r[2] !== '');
     }).map(function(r, idx) {
@@ -528,6 +528,9 @@ function fetchAllSheetsData() {
       var bi = getSubObj(23, 24, 25, 26); if (bi) subs.BIOLOGY = bi;
       var es = getSubObj(27, 28, 29, 30); if (es) subs.EARTH_SCI = es;
       if (r[31] !== '' && !isNaN(r[31])) subs.GEOGRAPHY = { score: Number(r[31]) };
+      if (r[32] !== '' && !isNaN(r[32])) subs.HISTORY = { score: Number(r[32]) };
+      if (r[33] !== '' && !isNaN(r[33])) subs.CIVICS = { score: Number(r[33]) };
+      if (r[34] !== '' && !isNaN(r[34])) subs.WRITING = { score: Number(r[34]) };
       
       return {
         id: id,
@@ -538,10 +541,55 @@ function fetchAllSheetsData() {
         totalScore: (r[5] !== '' && !isNaN(r[5])) ? Number(r[5]) : 0,
         averageScore: (r[6] !== '' && !isNaN(r[6])) ? Number(r[6]) : 0,
         subjects: subs,
-        blindspot: r[31] ? String(r[31]) : '',
-        notes: r[32] ? String(r[32]) : ''
+        blindspot: r[35] ? String(r[35]) : '',
+        notes: r[36] ? String(r[36]) : ''
       };
     });
+  }
+
+  // 4. 讀取目標高中與志願 (完整 9 欄)
+  var targetSheet = ss.getSheetByName('目標高中與志願');
+  if (targetSheet && targetSheet.getLastRow() > 1) {
+    var tgValues = targetSheet.getRange(2, 1, targetSheet.getLastRow() - 1, 9).getValues();
+    result.targetSchools = tgValues.filter(function(r) {
+      return (r[0] !== '' || r[1] !== '');
+    }).map(function(r, idx) {
+      var subjectTargets = {};
+      try {
+        if (r[7]) subjectTargets = JSON.parse(r[7]);
+      } catch(e) {}
+      return {
+        id: r[0] ? String(r[0]) : ('ts_' + idx),
+        name: String(r[1] || ''),
+        shortName: String(r[2] || ''),
+        district: String(r[3] || 'KEELUNG_TAIPEI'),
+        cutoffPoints: (r[4] !== '' && !isNaN(r[4])) ? Number(r[4]) : 30,
+        cutoffCredits: (r[5] !== '' && !isNaN(r[5])) ? Number(r[5]) : 30,
+        targetTierSummary: String(r[6] || '5A'),
+        subjectTargets: subjectTargets,
+        notes: String(r[8] || '')
+      };
+    });
+  }
+
+  // 5. 讀取系統設定 (Key-Value 轉對象)
+  var setSheet = ss.getSheetByName('系統設定與備份') || ss.getSheetByName('系統設定');
+  if (setSheet && setSheet.getLastRow() > 1) {
+    var sValues = setSheet.getRange(2, 1, setSheet.getLastRow() - 1, 2).getValues();
+    var setObj = {};
+    sValues.forEach(function(r) {
+      if (!r[0]) return;
+      var key = String(r[0]);
+      var val = r[1];
+      try {
+        if (typeof val === 'string' && (val.indexOf('{') === 0 || val.indexOf('[') === 0)) {
+          setObj[key] = JSON.parse(val);
+          return;
+        }
+      } catch(e) {}
+      setObj[key] = val;
+    });
+    result.settings = setObj;
   }
   
   return result;

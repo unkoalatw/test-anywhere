@@ -46,7 +46,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- 客製化深色精緻介面樣式 -->
-  <link rel="stylesheet" href="./css/styles.css?v=13" />
+  <link rel="stylesheet" href="./css/styles.css?v=14" />
 </head>
 <body class="bg-[#0B0D11] text-[#F3F4F6]">
 
@@ -164,9 +164,10 @@
         <i data-lucide="table" class="w-5 h-5"></i>
         <span>表格</span>
       </button>
-      <button class="mobile-nav-btn mobile-fab-center" onclick="App.openQuickAddModal()" title="快速錄入成績">
+      <!-- 中央醒目浮動錄入按鈕 -->
+      <button class="mobile-nav-btn mobile-fab-btn" onclick="App.openQuickAddModal()" title="快速錄入">
         <div class="fab-circle">
-          <i data-lucide="plus" class="w-6 h-6"></i>
+          <i data-lucide="plus" class="w-6 h-6 text-white"></i>
         </div>
         <span>錄入</span>
       </button>
@@ -189,17 +190,17 @@
   <div id="toast-container"></div>
 
   <!-- 核心腳本載入順序 (含版本防快取) -->
-  <script src="./js/constants.js?v=13"></script>
-  <script src="./js/scoring.js?v=13"></script>
-  <script src="./js/db.js?v=13"></script>
-  <script src="./js/charts.js?v=13"></script>
-  <script src="./js/views/bitable-grid.js?v=13"></script>
-  <script src="./js/views/bitable-kanban.js?v=13"></script>
-  <script src="./js/views/bitable-dashboard.js?v=13"></script>
-  <script src="./js/views/bitable-gallery.js?v=13"></script>
-  <script src="./js/gas-sync.js?v=13"></script>
-  <script src="./js/export-import.js?v=13"></script>
-  <script src="./js/app.js?v=13"></script>
+  <script src="./js/constants.js?v=14"></script>
+  <script src="./js/scoring.js?v=14"></script>
+  <script src="./js/db.js?v=14"></script>
+  <script src="./js/charts.js?v=14"></script>
+  <script src="./js/views/bitable-grid.js?v=14"></script>
+  <script src="./js/views/bitable-kanban.js?v=14"></script>
+  <script src="./js/views/bitable-dashboard.js?v=14"></script>
+  <script src="./js/views/bitable-gallery.js?v=14"></script>
+  <script src="./js/gas-sync.js?v=14"></script>
+  <script src="./js/export-import.js?v=14"></script>
+  <script src="./js/app.js?v=14"></script>
 
 </body>
 </html>

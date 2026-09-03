@@ -337,27 +337,33 @@ const DB = {
       return { status: 'cloud_empty', incomingCount: 0, localCount: totalLocal };
     }
 
-    if (this.useLocalStorage) {
-      if (incomingQuizzes.length > 0 || totalLocal === 0) localStorage.setItem('CAP_quizzes', JSON.stringify(incomingQuizzes));
-      if (incomingTerms.length > 0 || totalLocal === 0) localStorage.setItem('CAP_termExams', JSON.stringify(incomingTerms));
-      if (incomingMocks.length > 0 || totalLocal === 0) localStorage.setItem('CAP_mockExams', JSON.stringify(incomingMocks));
-      if (Array.isArray(payload.targetSchools)) localStorage.setItem('CAP_targetSchools', JSON.stringify(payload.targetSchools));
-      if (payload.settings) localStorage.setItem('CAP_settings', JSON.stringify(payload.settings));
-      this.notify('all', 'import', null);
-      return { status: 'success', incomingCount: totalIncoming };
-    }
+    // 1. 智慧合併小考 (Merge Quizzes by ID)
+    const quizMap = new Map();
+    curQuizzes.forEach(q => { if (q && q.id) quizMap.set(String(q.id), q); });
+    incomingQuizzes.forEach(q => {
+      if (q && q.id) {
+        quizMap.set(String(q.id), { ...(quizMap.get(String(q.id)) || {}), ...q });
+      }
+    });
+    const mergedQuizzes = Array.from(quizMap.values());
 
-    if (incomingQuizzes.length > 0 || totalLocal === 0) {
-      await this.clear('quizzes');
-      if (incomingQuizzes.length > 0) await this.bulkPut('quizzes', incomingQuizzes);
-    }
-    if (incomingTerms.length > 0 || totalLocal === 0) {
-      await this.clear('termExams');
-      if (incomingTerms.length > 0) await this.bulkPut('termExams', incomingTerms);
-    }
-    if (incomingMocks.length > 0 || totalLocal === 0) {
-      await this.clear('mockExams');
-      const cleanMocks = incomingMocks.map((m, idx) => ({
+    // 2. 智慧合併定期段考 (Merge Term Exams by ID)
+    const termMap = new Map();
+    curTerms.forEach(t => { if (t && t.id) termMap.set(String(t.id), t); });
+    incomingTerms.forEach(t => {
+      if (t && t.id) {
+        termMap.set(String(t.id), { ...(termMap.get(String(t.id)) || {}), ...t });
+      }
+    });
+    const mergedTerms = Array.from(termMap.values());
+
+    // 3. 智慧合併模擬考 (Merge Mock Exams by ID or Title+Date)
+    const mockMap = new Map();
+    curMocks.forEach(m => {
+      if (m && m.id) mockMap.set(String(m.id), m);
+    });
+    incomingMocks.forEach((m, idx) => {
+      const cleanM = {
         id: m.id ? String(m.id) : `mock_${Date.now()}_${idx}`,
         title: m.title ? String(m.title) : '模擬考評量',
         date: m.date || new Date().toISOString().slice(0, 10),
@@ -374,13 +380,58 @@ const DB = {
           WRITING: { grade: 4 }
         },
         notes: m.notes || ''
-      }));
-      if (cleanMocks.length > 0) await this.bulkPut('mockExams', cleanMocks);
+      };
+      let foundKey = cleanM.id;
+      for (const [existingId, existingMock] of mockMap.entries()) {
+        if (existingMock.title === cleanM.title && existingMock.date === cleanM.date) {
+          foundKey = existingId;
+          break;
+        }
+      }
+      mockMap.set(foundKey, { ...(mockMap.get(foundKey) || {}), ...cleanM });
+    });
+    const mergedMocks = Array.from(mockMap.values());
+
+    // 4. 智慧合併目標學校
+    const curSchools = await this.getAll('targetSchools');
+    const schoolMap = new Map();
+    curSchools.forEach(s => { if (s && s.id) schoolMap.set(String(s.id), s); });
+    if (Array.isArray(payload.targetSchools)) {
+      payload.targetSchools.forEach(s => {
+        if (s && s.id) schoolMap.set(String(s.id), { ...(schoolMap.get(String(s.id)) || {}), ...s });
+      });
     }
-    if (Array.isArray(payload.targetSchools) && payload.targetSchools.length > 0) {
+    const mergedSchools = Array.from(schoolMap.values());
+
+    // 寫入儲存
+    if (this.useLocalStorage) {
+      localStorage.setItem('CAP_quizzes', JSON.stringify(mergedQuizzes));
+      localStorage.setItem('CAP_termExams', JSON.stringify(mergedTerms));
+      localStorage.setItem('CAP_mockExams', JSON.stringify(mergedMocks));
+      if (mergedSchools.length > 0) localStorage.setItem('CAP_targetSchools', JSON.stringify(mergedSchools));
+      if (payload.settings) {
+        const curSettings = JSON.parse(localStorage.getItem('CAP_settings') || '{}');
+        localStorage.setItem('CAP_settings', JSON.stringify({ ...curSettings, ...payload.settings }));
+      }
+      this.notify('all', 'import', null);
+      return { status: 'success', incomingCount: totalIncoming };
+    }
+
+    // IndexedDB: 清空並寫入合併後的完整集合 (保證不遺失任何本地或雲端成績)
+    await this.clear('quizzes');
+    if (mergedQuizzes.length > 0) await this.bulkPut('quizzes', mergedQuizzes);
+
+    await this.clear('termExams');
+    if (mergedTerms.length > 0) await this.bulkPut('termExams', mergedTerms);
+
+    await this.clear('mockExams');
+    if (mergedMocks.length > 0) await this.bulkPut('mockExams', mergedMocks);
+
+    if (mergedSchools.length > 0) {
       await this.clear('targetSchools');
-      await this.bulkPut('targetSchools', payload.targetSchools);
+      await this.bulkPut('targetSchools', mergedSchools);
     }
+
     if (payload.settings) {
       const curSettings = (await this.get('settings', 'main')) || {};
       await this.put('settings', { id: 'main', ...curSettings, ...payload.settings });
