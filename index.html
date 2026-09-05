@@ -123,6 +123,10 @@
             <i data-lucide="target" class="w-3.5 h-3.5"></i>
             <span>會考模擬考</span>
           </button>
+          <button class="module-tab-btn" data-module="mini_mock" onclick="App.switchModule('mini_mock')">
+            <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
+            <span>單科模模考</span>
+          </button>
           <button class="module-tab-btn" data-module="term" onclick="App.switchModule('term')">
             <i data-lucide="award" class="w-3.5 h-3.5"></i>
             <span>定期段考</span>
@@ -169,18 +173,17 @@
     <nav class="mobile-bottom-nav md:hidden">
       <button class="mobile-nav-btn active" data-view="dashboard" onclick="App.switchView('dashboard')">
         <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
-        <span>戰情</span>
+        <span>總覽</span>
       </button>
       <button class="mobile-nav-btn" data-view="grid" onclick="App.switchView('grid')">
         <i data-lucide="table" class="w-5 h-5"></i>
-        <span>表格</span>
+        <span>多維表格</span>
       </button>
-      <!-- 中央醒目浮動錄入按鈕 -->
-      <button class="mobile-nav-btn mobile-fab-btn" onclick="App.openQuickAddModal()" title="快速錄入">
-        <div class="fab-circle">
-          <i data-lucide="plus" class="w-6 h-6 text-white"></i>
+      <button class="mobile-nav-btn mobile-fab-btn" onclick="App.openQuickAddModal()" title="快速錄入成績">
+        <div class="w-11 h-11 rounded-full bg-primary-blue text-white flex items-center justify-center shadow-lg shadow-primary-blue/30 -mt-4 border-2 border-surface">
+          <i data-lucide="plus" class="w-6 h-6"></i>
         </div>
-        <span>錄入</span>
+        <span class="text-3xs font-bold text-primary-blue mt-0.5">記一筆</span>
       </button>
       <button class="mobile-nav-btn" data-view="kanban" onclick="App.switchView('kanban')">
         <i data-lucide="kanban-square" class="w-5 h-5"></i>
@@ -201,18 +204,18 @@
   <div id="toast-container"></div>
 
   <!-- 核心腳本載入順序 (含版本防快取) -->
-  <script src="./js/constants.js?v=16"></script>
-  <script src="./js/auth.js?v=16"></script>
-  <script src="./js/scoring.js?v=16"></script>
-  <script src="./js/db.js?v=16"></script>
-  <script src="./js/charts.js?v=16"></script>
-  <script src="./js/views/bitable-grid.js?v=16"></script>
-  <script src="./js/views/bitable-kanban.js?v=16"></script>
-  <script src="./js/views/bitable-dashboard.js?v=16"></script>
-  <script src="./js/views/bitable-gallery.js?v=16"></script>
-  <script src="./js/gas-sync.js?v=16"></script>
-  <script src="./js/export-import.js?v=16"></script>
-  <script src="./js/app.js?v=16"></script>
+  <script src="./js/constants.js?v=17"></script>
+  <script src="./js/auth.js?v=17"></script>
+  <script src="./js/scoring.js?v=17"></script>
+  <script src="./js/db.js?v=17"></script>
+  <script src="./js/charts.js?v=17"></script>
+  <script src="./js/views/bitable-grid.js?v=17"></script>
+  <script src="./js/views/bitable-kanban.js?v=17"></script>
+  <script src="./js/views/bitable-dashboard.js?v=17"></script>
+  <script src="./js/views/bitable-gallery.js?v=17"></script>
+  <script src="./js/gas-sync.js?v=17"></script>
+  <script src="./js/export-import.js?v=17"></script>
+  <script src="./js/app.js?v=17"></script>
 
 </body>
 </html>

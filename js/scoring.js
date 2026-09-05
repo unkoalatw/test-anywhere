@@ -35,6 +35,152 @@ const ScoringEngine = {
   },
 
   /**
+   * 模模考（單科模擬測驗）即時分數、等級標示與積點精準推估引擎
+   * @param {string} subject 科目代碼 (CHINESE, ENGLISH, MATH, SCIENCE, SOCIAL, WRITING)
+   * @param {Object} params 輸入參數
+   * @returns {Object} 包含 notation, weightedScore, points, jumpHint 等運算結果
+   */
+  estimateSingleMockScore(subject, params = {}) {
+    const benchmarks = CONSTANTS.CAP_CUTOFF_BENCHMARKS || {};
+    let notation = 'B';
+    let weightedScore = 0;
+    let rawCorrect = 0;
+    let totalItems = 0;
+    let wrongCount = 0;
+    let rate = 0;
+    let jumpHint = '';
+
+    if (subject === 'ENGLISH') {
+      const rCor = Number(params.readingCorrect !== undefined && params.readingCorrect !== '' ? params.readingCorrect : 0);
+      const rTot = Number(params.readingTotal || 43);
+      const lCor = Number(params.listeningCorrect !== undefined && params.listeningCorrect !== '' ? params.listeningCorrect : 0);
+      const lTot = Number(params.listeningTotal || 21);
+
+      weightedScore = this.calcEnglishWeightedScore(rCor, rTot, lCor, lTot) || 0;
+      rawCorrect = rCor + lCor;
+      totalItems = rTot + lTot;
+      wrongCount = Math.max(0, totalItems - rawCorrect);
+      rate = Math.round((weightedScore) * 10) / 10;
+
+      const brackets = benchmarks.ENGLISH?.brackets || [];
+      for (const b of brackets) {
+        if (weightedScore >= b.minWeighted) {
+          notation = b.notation;
+          break;
+        }
+      }
+
+      if (notation === 'A+') jumpHint = `閱讀或聽力多對 1 題 ➔ 晉升 A++ (滿點)`;
+      else if (notation === 'A') jumpHint = `加權再提高 2~3 分 ➔ 晉升 A+`;
+      else if (notation === 'B++') jumpHint = `加權差 1~2 分 ➔ 突破精熟 A 門檻！`;
+      else if (notation === 'B+') jumpHint = `加權再 +5 分 ➔ B++`;
+      else if (notation === 'B') jumpHint = `加權達 70 分 ➔ 晉升 B+`;
+      else jumpHint = `加權達 38.5 分 ➔ 跨過 B 基礎門檻`;
+
+    } else if (subject === 'MATH') {
+      const cCor = Number(params.choiceCorrect !== undefined && params.choiceCorrect !== '' ? params.choiceCorrect : 0);
+      const cTot = Number(params.choiceTotal || 25);
+      const ncScore = Number(params.nonChoiceScore !== undefined && params.nonChoiceScore !== '' ? params.nonChoiceScore : 0);
+      const ncMax = Number(params.nonChoiceMax || 6);
+
+      weightedScore = this.calcMathWeightedScore(cCor, cTot, ncScore, ncMax) || 0;
+      rawCorrect = cCor;
+      totalItems = cTot;
+      wrongCount = Math.max(0, cTot - cCor);
+      rate = Math.round((weightedScore) * 10) / 10;
+
+      const brackets = benchmarks.MATH?.brackets || [];
+      for (const b of brackets) {
+        if (weightedScore >= b.minWeighted) {
+          notation = b.notation;
+          break;
+        }
+      }
+
+      if (notation === 'A+') jumpHint = ncScore < 6 ? `非選步驟多拿 1 分 ➔ 晉升 A++` : `選擇多對 1 題 ➔ A++`;
+      else if (notation === 'A') jumpHint = `加權提高 3 分 ➔ 晉升 A+`;
+      else if (notation === 'B++') jumpHint = ncScore < 4 ? `非選步驟多拿 2 分 ➔ 跨入 A 精熟門檻！` : `選擇多對 1 題 ➔ 晉升 A`;
+      else if (notation === 'B+') jumpHint = `加權再 +6 分 ➔ B++`;
+      else if (notation === 'B') jumpHint = `加權達 58 分 ➔ 晉升 B+`;
+      else jumpHint = `選擇多對 3 題 ➔ 跨過 B 基礎門檻`;
+
+    } else if (subject === 'WRITING') {
+      const grade = Number(params.grade !== undefined ? params.grade : 5);
+      weightedScore = Math.round((grade / 6) * 100);
+      rawCorrect = grade;
+      totalItems = 6;
+      wrongCount = 6 - grade;
+      rate = Math.round((grade / 6) * 100);
+      notation = `${grade}級分`;
+      if (grade === 5) jumpHint = `加強篇章立意與修辭結構 ➔ 衝刺 6 級分`;
+      else if (grade === 4) jumpHint = `充實論據與段落轉折 ➔ 晉升 5 級分`;
+      else jumpHint = `注意錯別字與完整段落表達 ➔ 穩拿 4 級分`;
+
+    } else {
+      // 國文、自然、社會 (單純總題數與答對題數)
+      const bm = benchmarks[subject] || { totalItems: 50, brackets: [] };
+      const tot = Number(params.totalCount || bm.totalItems || 50);
+      const cor = Number(params.correctCount !== undefined && params.correctCount !== '' ? params.correctCount : 0);
+
+      rawCorrect = cor;
+      totalItems = tot;
+      wrongCount = Math.max(0, tot - cor);
+      rate = Math.round((cor / tot) * 1000) / 10;
+      weightedScore = rate;
+
+      // 若題數與標準會考題數相仿，依標準 bracket；若非標準題數，依比例推算
+      if (tot === bm.totalItems && bm.brackets.length > 0) {
+        for (const b of bm.brackets) {
+          if (cor >= b.minCorrect) {
+            notation = b.notation;
+            break;
+          }
+        }
+      } else {
+        // 百分比等比例對照
+        if (rate >= 95) notation = 'A++';
+        else if (rate >= 90) notation = 'A+';
+        else if (rate >= 84) notation = 'A';
+        else if (rate >= 74) notation = 'B++';
+        else if (rate >= 62) notation = 'B+';
+        else if (rate >= 44) notation = 'B';
+        else notation = 'C';
+      }
+
+      if (notation === 'A+') jumpHint = `再多對 1 題 ➔ 晉升 A++ (滿點)`;
+      else if (notation === 'A') jumpHint = `再多對 1~2 題 ➔ 晉升 A+`;
+      else if (notation === 'B++') jumpHint = `再多對 1~2 題 ➔ 突破精熟 A 門檻！`;
+      else if (notation === 'B+') jumpHint = `再多對 2~3 題 ➔ 晉升 B++`;
+      else if (notation === 'B') jumpHint = `再多對 2~3 題 ➔ 晉升 B+`;
+      else jumpHint = `掌握核心基礎題 ➔ 跨過 B 門檻`;
+    }
+
+    // 計算積分與積點
+    const notationObj = CONSTANTS.CAP_NOTATIONS.find(n => n.notation === notation);
+    const standardPoints = notationObj ? notationObj.standardPoints : (subject === 'WRITING' ? Number(params.grade || 5) * 0.2 : 4);
+    const credits = notationObj ? notationObj.credits : 4;
+    const centralPoints = notationObj ? (notationObj.tierRank === 7 ? 21 : (notationObj.tierRank === 6 ? 18 : (notationObj.tierRank === 5 ? 15 : (notationObj.tierRank === 4 ? 12 : (notationObj.tierRank === 3 ? 9 : (notationObj.tierRank === 2 ? 6 : 3)))))) : 12;
+
+    const notColor = notationObj ? notationObj.color : '#3B82F6';
+    const isMastery = notation.startsWith('A');
+
+    return {
+      notation,
+      weightedScore,
+      rawCorrect,
+      totalItems,
+      wrongCount,
+      rate,
+      standardPoints,
+      centralPoints,
+      credits,
+      jumpHint,
+      tierColor: notColor,
+      isMastery
+    };
+  },
+
+  /**
    * 取得等級標示的數值權重 (7: A++, 6: A+, 5: A, 4: B++, 3: B+, 2: B, 1: C)
    * @param {string} notation 等級標示
    * @returns {number}

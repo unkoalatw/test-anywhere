@@ -631,6 +631,251 @@ const BitableGrid = {
     if (window.lucide) lucide.createIcons();
   },
 
+  /**
+   * 渲染單科模模考表格與手機卡片視圖 (Mini Mock Grid & Mobile Cards)
+   */
+  renderMiniMockGrid(containerId, miniMocks = []) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    let items = [...miniMocks];
+
+    // 1. 搜尋過濾
+    if (this.searchQuery) {
+      const q = this.searchQuery.toLowerCase();
+      items = items.filter(item => 
+        (item.title && item.title.toLowerCase().includes(q)) ||
+        (item.scope && item.scope.toLowerCase().includes(q)) ||
+        (item.blindspot && item.blindspot.toLowerCase().includes(q)) ||
+        (item.notes && item.notes.toLowerCase().includes(q))
+      );
+    }
+
+    // 2. 科目過濾
+    if (this.selectedSubject !== 'ALL') {
+      items = items.filter(item => item.subject === this.selectedSubject);
+    }
+
+    // 3. 等級標示過濾
+    if (this.selectedFilter !== 'ALL') {
+      if (this.selectedFilter === 'TIER_A') items = items.filter(item => item.notation && item.notation.startsWith('A'));
+      else if (this.selectedFilter === 'TIER_B') items = items.filter(item => item.notation && item.notation.startsWith('B'));
+      else if (this.selectedFilter === 'TIER_C') items = items.filter(item => item.notation === 'C');
+      else items = items.filter(item => item.notation === this.selectedFilter);
+    }
+
+    // 4. 排序
+    items.sort((a, b) => {
+      let valA = a[this.currentSort.column];
+      let valB = b[this.currentSort.column];
+      if (valA < valB) return this.currentSort.order === 'asc' ? -1 : 1;
+      if (valA > valB) return this.currentSort.order === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    let html = `
+      <!-- 工具列 -->
+      <div class="grid-toolbar mb-3 flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-surface border border-border">
+        <div class="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
+          <!-- 搜尋框 -->
+          <div class="relative flex-1 sm:flex-initial">
+            <input type="text" class="form-input-inline pl-7 text-xs w-full sm:w-48" placeholder="搜尋考卷名稱 / 範圍 / 盲點..." value="${this.searchQuery}" oninput="BitableGrid.onSearch(this.value)" />
+            <i data-lucide="search" class="w-3.5 h-3.5 text-muted absolute left-2 top-2"></i>
+          </div>
+
+          <!-- 科目過濾 -->
+          <select class="select-sm text-2xs" onchange="BitableGrid.onFilterSubject(this.value)">
+            <option value="ALL" ${this.selectedSubject === 'ALL' ? 'selected' : ''}>所有考科</option>
+            ${CONSTANTS.CAP_SUBJECTS.map(s => `<option value="${s.id}" ${this.selectedSubject === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
+          </select>
+
+          <!-- 等級標示過濾 -->
+          <select class="select-sm text-2xs" onchange="BitableGrid.onFilterStatus(this.value)">
+            <option value="ALL" ${this.selectedFilter === 'ALL' ? 'selected' : ''}>全部等級標示</option>
+            <option value="TIER_A" ${this.selectedFilter === 'TIER_A' ? 'selected' : ''}>精熟 A 級 (A++/A+/A)</option>
+            <option value="TIER_B" ${this.selectedFilter === 'TIER_B' ? 'selected' : ''}>基礎 B 級 (B++/B+/B)</option>
+            <option value="TIER_C" ${this.selectedFilter === 'TIER_C' ? 'selected' : ''}>待加強 C 級</option>
+          </select>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button class="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5 shadow-sm" onclick="App.openMiniMockModal()">
+            <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+            <span>錄入單科模模考</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 桌面版精緻數據表格 -->
+      <div class="bitable-table-container hidden md:block overflow-x-auto rounded-lg border border-border bg-card">
+        <table class="bitable-table w-full text-xs">
+          <thead>
+            <tr class="bg-surface border-b border-border text-muted">
+              <th class="cursor-pointer text-left py-2.5 px-3" onclick="BitableGrid.toggleSort('date')">測驗日期 ${this.getSortIcon('date')}</th>
+              <th class="cursor-pointer text-left py-2.5 px-3" onclick="BitableGrid.toggleSort('subject')">考科 ${this.getSortIcon('subject')}</th>
+              <th class="text-left py-2.5 px-3">考卷名稱 / 單元範圍</th>
+              <th class="text-center py-2.5 px-3">答對題數 / 得分率</th>
+              <th class="cursor-pointer text-center py-2.5 px-3" onclick="BitableGrid.toggleSort('weightedScore')">加權/實得分數 ${this.getSortIcon('weightedScore')}</th>
+              <th class="text-center py-2.5 px-3">會考等級標示</th>
+              <th class="text-center py-2.5 px-3">換算積點</th>
+              <th class="text-left py-2.5 px-3 min-w-[180px]">💡 核心觀念盲點</th>
+              <th class="text-center py-2.5 px-3">操作</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border/60">
+    `;
+
+    if (items.length === 0) {
+      html += `
+        <tr>
+          <td colspan="9" class="py-12 text-center text-muted">
+            <i data-lucide="calculator" class="w-8 h-8 text-muted mx-auto mb-2 opacity-50"></i>
+            <div>無符合條件的單科模模考紀錄</div>
+            <button class="btn-secondary text-xs mt-3 py-1 px-3 text-primary-blue border-primary-blue/30" onclick="App.openMiniMockModal()">
+              <i data-lucide="plus" class="w-3 h-3 inline mr-1"></i>錄入第一筆單科測驗
+            </button>
+          </td>
+        </tr>
+      `;
+    } else {
+      items.forEach(m => {
+        const subObj = CONSTANTS.SUBJECTS.find(s => s.id === m.subject) || { name: m.subject, color: '#3B82F6' };
+        const notObj = CONSTANTS.CAP_NOTATIONS.find(n => n.notation === m.notation) || { color: '#3B82F6', badgeClass: 'badge-primary' };
+        const linkedMistakeCount = (window.App && App.cachedData && App.cachedData.mistakes ? App.cachedData.mistakes.filter(mk => mk.examId === m.id).length : 0);
+
+        html += `
+          <tr class="hover:bg-surface/50 transition-colors">
+            <td class="py-2.5 px-3 font-mono text-secondary">${m.date}</td>
+            <td class="py-2.5 px-3">
+              <span class="subject-pill font-bold" style="border-left-color: ${subObj.color};">${subObj.name}</span>
+            </td>
+            <td class="py-2.5 px-3">
+              <div class="font-bold text-primary">${m.title || '單科模擬測驗'}</div>
+              ${m.scope ? `<div class="text-3xs text-muted">${m.scope}</div>` : ''}
+            </td>
+            <td class="py-2.5 px-3 text-center font-mono">
+              <span class="text-primary font-bold">${m.rawCorrect !== undefined ? m.rawCorrect : '-'}</span>
+              <span class="text-muted"> / ${m.totalItems || '-'}</span>
+              ${m.rate !== undefined ? `<div class="text-3xs text-muted">(${m.rate}%)</div>` : ''}
+            </td>
+            <td class="py-2.5 px-3 text-center font-mono font-bold text-primary-blue text-sm">
+              ${m.weightedScore !== undefined ? m.weightedScore : '-'}
+            </td>
+            <td class="py-2.5 px-3 text-center">
+              <span class="px-2 py-0.5 rounded-full text-xs font-bold border font-mono" style="color: ${notObj.color}; background: ${notObj.color}15; border-color: ${notObj.color}40;">
+                ${m.notation || 'B'}
+              </span>
+            </td>
+            <td class="py-2.5 px-3 text-center font-mono font-bold text-amber-400">
+              ${m.standardPoints !== undefined ? `${m.standardPoints} 點` : '-'}
+            </td>
+            <td class="py-2.5 px-3">
+              ${m.blindspot ? `
+                <div class="text-2xs text-warning leading-tight flex items-start gap-1">
+                  <i data-lucide="lightbulb" class="w-3 h-3 text-warning shrink-0 mt-0.5"></i>
+                  <span class="line-clamp-2">${m.blindspot}</span>
+                </div>
+              ` : '<span class="text-3xs text-muted italic">無盲點備註</span>'}
+            </td>
+            <td class="py-2.5 px-3 text-center">
+              <div class="flex items-center justify-center gap-1">
+                <button class="btn-icon" title="收錄本卷錯題" onclick="App.openAddMistakeModal(null, { examId: '${m.id}', examType: 'mini_mock', date: '${m.date}', subject: '${m.subject}', title: '${m.title}' })">
+                  <i data-lucide="plus" class="w-3.5 h-3.5 text-rose-400"></i>
+                </button>
+                <button class="btn-icon" title="編輯" onclick="App.openMiniMockModal('${m.id}')">
+                  <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                </button>
+                <button class="btn-icon text-danger" title="刪除" onclick="App.deleteItem('miniMocks', '${m.id}')">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+    }
+
+    html += `
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 手機版自適應卡片列表 (Mobile Card View) -->
+      <div class="mobile-cards-list md:hidden space-y-3">
+    `;
+
+    if (items.length === 0) {
+      html += `
+        <div class="empty-state py-12 text-center bg-surface/30 rounded-lg border border-dashed border-border">
+          <i data-lucide="calculator" class="w-10 h-10 text-muted mx-auto mb-2 opacity-50"></i>
+          <div class="text-secondary text-sm font-bold">無符合條件的單科模模考紀錄</div>
+          <button class="btn-primary text-xs mt-3 py-1.5 px-4" onclick="App.openMiniMockModal()">
+            <i data-lucide="plus" class="w-3.5 h-3.5 inline mr-1"></i>錄入單科成績
+          </button>
+        </div>
+      `;
+    } else {
+      items.forEach(m => {
+        const subObj = CONSTANTS.SUBJECTS.find(s => s.id === m.subject) || { name: m.subject, color: '#3B82F6' };
+        const notObj = CONSTANTS.CAP_NOTATIONS.find(n => n.notation === m.notation) || { color: '#3B82F6' };
+
+        html += `
+          <div class="mobile-exam-card p-3.5 rounded-lg border border-border bg-card shadow-sm space-y-2.5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="subject-pill font-bold" style="border-left-color: ${subObj.color};">${subObj.name}</span>
+                <span class="text-3xs font-mono text-muted">${m.date}</span>
+              </div>
+              <span class="px-2 py-0.5 rounded-full text-xs font-bold border font-mono" style="color: ${notObj.color}; background: ${notObj.color}15; border-color: ${notObj.color}40;">
+                ${m.notation || 'B'} (${m.standardPoints || 4} 點)
+              </span>
+            </div>
+
+            <div class="font-bold text-sm text-primary">${m.title || '單科模擬測驗'}</div>
+            ${m.scope ? `<div class="text-3xs text-secondary">${m.scope}</div>` : ''}
+
+            <div class="grid grid-cols-2 gap-2 p-2 rounded bg-surface/80 text-xs font-mono">
+              <div>
+                <span class="text-3xs text-muted block">答對題數 / 率</span>
+                <b class="text-primary">${m.rawCorrect !== undefined ? m.rawCorrect : '-'}</b> / ${m.totalItems || '-'} (${m.rate || 0}%)
+              </div>
+              <div>
+                <span class="text-3xs text-muted block">加權/實得分</span>
+                <b class="text-primary-blue text-sm">${m.weightedScore !== undefined ? m.weightedScore : '-'}</b>
+              </div>
+            </div>
+
+            ${m.blindspot ? `
+              <div class="p-2 rounded bg-amber-500/10 border border-amber-500/30 text-2xs text-warning flex items-start gap-1.5">
+                <i data-lucide="lightbulb" class="w-3.5 h-3.5 shrink-0 text-warning mt-0.5"></i>
+                <div class="min-w-0 font-medium">${m.blindspot}</div>
+              </div>
+            ` : ''}
+
+            <div class="flex items-center justify-between pt-2 border-t border-border/40 text-xs">
+              <button class="btn-secondary text-2xs py-1 px-2 text-rose-400 border-rose-500/30" onclick="App.openAddMistakeModal(null, { examId: '${m.id}', examType: 'mini_mock', date: '${m.date}', subject: '${m.subject}', title: '${m.title}' })">
+                <i data-lucide="plus" class="w-3 h-3 inline mr-0.5"></i>收錄錯題
+              </button>
+              <div class="flex items-center gap-2">
+                <button class="btn-secondary text-2xs py-1 px-2" onclick="App.openMiniMockModal('${m.id}')">
+                  <i data-lucide="edit-2" class="w-3 h-3 inline mr-1"></i>編輯
+                </button>
+                <button class="btn-danger-outline text-2xs py-1 px-2" onclick="App.deleteItem('miniMocks', '${m.id}')">
+                  <i data-lucide="trash-2" class="w-3 h-3 inline mr-1"></i>刪除
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    html += `</div>`;
+
+    container.innerHTML = html;
+    if (window.lucide) lucide.createIcons();
+  },
+
   onSearch(query) {
     this.searchQuery = query;
     App.refreshCurrentView();

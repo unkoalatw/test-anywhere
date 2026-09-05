@@ -96,6 +96,7 @@ function doPost(e) {
       if (data.quizzes) syncQuizzesSheet(userEmail, data.quizzes);
       if (data.termExams) syncTermExamsSheet(userEmail, data.termExams);
       if (data.mockExams) syncMockExamsSheet(userEmail, data.mockExams);
+      if (data.miniMocks) syncMiniMocksSheet(userEmail, data.miniMocks);
       if (data.targetSchools) syncTargetSchoolsSheet(userEmail, data.targetSchools);
       if (data.mistakes) syncMistakesSheet(userEmail, data.mistakes);
       if (data.settings) syncSettingsSheet(userEmail, data.settings);
@@ -109,6 +110,7 @@ function doPost(e) {
           quizzes: data.quizzes ? data.quizzes.length : 0,
           termExams: data.termExams ? data.termExams.length : 0,
           mockExams: data.mockExams ? data.mockExams.length : 0,
+          miniMocks: data.miniMocks ? data.miniMocks.length : 0,
           mistakes: data.mistakes ? data.mistakes.length : 0
         }
       });
@@ -177,8 +179,12 @@ function autoFormatSpreadsheet() {
   var mistakeSheet = getOrCreateSheet(ss, '錯題收錄與分析');
   setupMistakeSheetHeader(mistakeSheet);
 
+  // 7. 格式化「單科模模考紀錄」
+  var miniMockSheet = getOrCreateSheet(ss, '單科模模考紀錄');
+  setupMiniMockSheetHeader(miniMockSheet);
+
   return {
-    sheets: ['使用者帳號管理', '模擬考會考專區', '定期段考評量', '小考評量紀錄', '目標高中與志願', '錯題收錄與分析', '系統設定與備份'],
+    sheets: ['使用者帳號管理', '模擬考會考專區', '單科模模考紀錄', '定期段考評量', '小考評量紀錄', '目標高中與志願', '錯題收錄與分析', '系統設定與備份'],
     formattedAt: new Date().toISOString()
   };
 }
@@ -271,6 +277,16 @@ function setupMistakeSheetHeader(sheet) {
     '使用者帳號', 'ID', '關聯考卷ID', '考種', '測驗日期', '科目', '單元章節',
     '題型', '題號或標題', '題目題幹描述', '學生作答與思路', '正確答案與解法',
     '錯題歸因標籤', '掌握度等級', '盲點與複習重點', '下次複習日期', '建立時間'
+  ];
+  applyHeaderStyle(sheet, headers);
+}
+
+// 7. 單科模模考紀錄 (首欄為使用者帳號)
+function setupMiniMockSheetHeader(sheet) {
+  var headers = [
+    '使用者帳號', 'ID', '測驗日期', '科目代碼', '科目名稱', '考次/試卷名稱', '測驗範圍',
+    '答對題數', '總題數', '得分率%', '加權分數', '會考等級標示', '換算積點', '換算積分',
+    '錯題數', '核心盲點複習重點', '備註心得', '建立時間'
   ];
   applyHeaderStyle(sheet, headers);
 }
@@ -703,6 +719,60 @@ function syncMistakesSheet(userEmail, items) {
   }
 }
 
+function syncMiniMocksSheet(userEmail, items) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = getOrCreateSheet(ss, '單科模模考紀錄');
+  
+  var lastRow = sheet.getLastRow();
+  var remainingRows = [];
+  if (lastRow > 1) {
+    var existingVals = sheet.getRange(2, 1, lastRow - 1, 18).getValues();
+    remainingRows = existingVals.filter(function(r) {
+      var rowUser = String(r[0] || '').trim().toLowerCase();
+      if (rowUser === userEmail) return false;
+      if (rowUser === '' && userEmail === DEFAULT_OWNER_EMAIL) return false;
+      return true;
+    });
+  }
+
+  var subNameMap = {
+    'CHINESE': '國文', 'ENGLISH': '英文', 'MATH': '數學',
+    'SCIENCE': '自然', 'SOCIAL': '社會', 'WRITING': '寫作'
+  };
+  
+  var newRows = (items || []).map(function(item) {
+    return [
+      userEmail,
+      item.id || '',
+      item.date || '',
+      item.subject || 'CHINESE',
+      subNameMap[item.subject] || item.subject || '',
+      item.title || '單科模擬測驗',
+      item.scope || '',
+      item.rawCorrect !== undefined ? item.rawCorrect : '',
+      item.totalItems || '',
+      item.rate !== undefined ? (item.rate + '%') : '',
+      item.weightedScore !== undefined ? item.weightedScore : '',
+      item.notation || 'B',
+      item.standardPoints !== undefined ? item.standardPoints : '',
+      item.credits !== undefined ? item.credits : '',
+      item.mistakeCount !== undefined ? item.mistakeCount : '',
+      item.blindspot || '',
+      item.notes || '',
+      item.createdAt || new Date().toISOString()
+    ];
+  });
+  
+  var finalRows = remainingRows.concat(newRows);
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
+  }
+  if (finalRows.length > 0) {
+    sheet.getRange(2, 1, finalRows.length, finalRows[0].length).setValues(finalRows);
+    sheet.autoResizeColumns(1, finalRows[0].length);
+  }
+}
+
 // ==========================================
 // 多租戶數據拉取 (Fetch By User)
 // ==========================================
@@ -714,7 +784,9 @@ function fetchAllSheetsData(userEmail) {
     quizzes: [],
     termExams: [],
     mockExams: [],
+    miniMocks: [],
     targetSchools: [],
+    mistakes: [],
     settings: {}
   };
   
@@ -924,6 +996,41 @@ function fetchAllSheetsData(userEmail) {
     });
   } else {
     result.mistakes = [];
+  }
+
+  // 7. 讀取單科模模考紀錄 (以 userEmail 過濾)
+  var miniSheet = ss.getSheetByName('單科模模考紀錄');
+  if (miniSheet && miniSheet.getLastRow() > 1) {
+    var mmValues = miniSheet.getRange(2, 1, miniSheet.getLastRow() - 1, 18).getValues();
+    result.miniMocks = mmValues.filter(function(r) {
+      var rowUser = String(r[0] || '').trim().toLowerCase();
+      if (rowUser === userEmail) return true;
+      if (rowUser === '' && userEmail === DEFAULT_OWNER_EMAIL) return true;
+      return false;
+    }).filter(function(r) {
+      return (r[1] !== '' || r[3] !== '' || r[5] !== '');
+    }).map(function(r, idx) {
+      return {
+        id: r[1] ? String(r[1]) : ('sme_' + new Date().getTime() + '_' + idx),
+        date: formatDate(r[2]) || new Date().toISOString().slice(0, 10),
+        subject: String(r[3] || 'CHINESE'),
+        title: String(r[5] || '單科模擬測驗'),
+        scope: String(r[6] || ''),
+        rawCorrect: (r[7] !== '' && !isNaN(r[7])) ? Number(r[7]) : 0,
+        totalItems: (r[8] !== '' && !isNaN(r[8])) ? Number(r[8]) : 50,
+        rate: r[9] ? Number(String(r[9]).replace('%', '')) : 0,
+        weightedScore: (r[10] !== '' && !isNaN(r[10])) ? Number(r[10]) : 0,
+        notation: String(r[11] || 'B'),
+        standardPoints: (r[12] !== '' && !isNaN(r[12])) ? Number(r[12]) : 4,
+        credits: (r[13] !== '' && !isNaN(r[13])) ? Number(r[13]) : 4,
+        mistakeCount: (r[14] !== '' && !isNaN(r[14])) ? Number(r[14]) : 0,
+        blindspot: String(r[15] || ''),
+        notes: String(r[16] || ''),
+        createdAt: r[17] ? String(r[17]) : new Date().toISOString()
+      };
+    });
+  } else {
+    result.miniMocks = [];
   }
   
   return result;

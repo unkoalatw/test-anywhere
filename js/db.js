@@ -76,6 +76,13 @@ const DB = {
           mockStore.createIndex('date', 'date', { unique: false });
         }
 
+        if (!db.objectStoreNames.contains('miniMocks')) {
+          const miniStore = db.createObjectStore('miniMocks', { keyPath: 'id' });
+          miniStore.createIndex('subject', 'subject', { unique: false });
+          miniStore.createIndex('date', 'date', { unique: false });
+          miniStore.createIndex('notation', 'notation', { unique: false });
+        }
+
         if (!db.objectStoreNames.contains('targetSchools')) {
           db.createObjectStore('targetSchools', { keyPath: 'id' });
         }
@@ -186,6 +193,7 @@ const DB = {
       localStorage.setItem(`${p}quizzes`, JSON.stringify([]));
       localStorage.setItem(`${p}termExams`, JSON.stringify([]));
       localStorage.setItem(`${p}mockExams`, JSON.stringify([]));
+      localStorage.setItem(`${p}miniMocks`, JSON.stringify([]));
       localStorage.setItem(`${p}targetSchools`, JSON.stringify(CONSTANTS.TARGET_SCHOOLS_DB));
       localStorage.setItem(`${p}mistakes`, JSON.stringify([]));
       localStorage.setItem(`${p}settings`, JSON.stringify(SEED_DATA.settings));
@@ -377,7 +385,7 @@ const DB = {
       return true;
     }
 
-    const stores = ['quizzes', 'termExams', 'mockExams', 'targetSchools', 'mistakes', 'settings'];
+    const stores = ['quizzes', 'termExams', 'mockExams', 'miniMocks', 'targetSchools', 'mistakes', 'settings'];
     const transaction = this.dbInstance.transaction(stores, 'readwrite');
     stores.forEach(s => transaction.objectStore(s).clear());
 
@@ -387,23 +395,25 @@ const DB = {
     return true;
   },
 
-  // 取得完整匯出 JSON (含全考種錯題本)
+  // 取得完整匯出 JSON (含模模考與全考種錯題本)
   async exportAllData() {
-    const [quizzes, termExams, mockExams, targetSchools, mistakes, settings] = await Promise.all([
+    const [quizzes, termExams, mockExams, miniMocks, targetSchools, mistakes, settings] = await Promise.all([
       this.getAll('quizzes'),
       this.getAll('termExams'),
       this.getAll('mockExams'),
+      this.getAll('miniMocks'),
       this.getAll('targetSchools'),
       this.getAll('mistakes'),
       this.get('settings', 'main')
     ]);
 
     return {
-      version: '1.1.0',
+      version: '1.2.0',
       exportedAt: new Date().toISOString(),
       quizzes,
       termExams,
       mockExams,
+      miniMocks: miniMocks || [],
       targetSchools,
       mistakes: mistakes || [],
       settings: settings || SEED_DATA.settings
@@ -417,16 +427,18 @@ const DB = {
     }
 
     const incomingMocks = Array.isArray(payload.mockExams) ? payload.mockExams : [];
+    const incomingMiniMocks = Array.isArray(payload.miniMocks) ? payload.miniMocks : [];
     const incomingQuizzes = Array.isArray(payload.quizzes) ? payload.quizzes : [];
     const incomingTerms = Array.isArray(payload.termExams) ? payload.termExams : [];
     const incomingMistakes = Array.isArray(payload.mistakes) ? payload.mistakes : [];
-    const totalIncoming = incomingMocks.length + incomingQuizzes.length + incomingTerms.length + incomingMistakes.length;
+    const totalIncoming = incomingMocks.length + incomingMiniMocks.length + incomingQuizzes.length + incomingTerms.length + incomingMistakes.length;
 
     const curMocks = await this.getAll('mockExams');
+    const curMiniMocks = await this.getAll('miniMocks');
     const curQuizzes = await this.getAll('quizzes');
     const curTerms = await this.getAll('termExams');
     const curMistakes = await this.getAll('mistakes');
-    const totalLocal = curMocks.length + curQuizzes.length + curTerms.length + curMistakes.length;
+    const totalLocal = curMocks.length + curMiniMocks.length + curQuizzes.length + curTerms.length + curMistakes.length;
 
     // 若雲端為空 (0筆) 但本地有成績，不要清空本地，保留現存紀錄
     if (totalIncoming === 0 && totalLocal > 0) {
@@ -454,7 +466,7 @@ const DB = {
     });
     const mergedTerms = Array.from(termMap.values());
 
-    // 3. 智慧合併模擬考 (Merge Mock Exams by ID or Title+Date)
+    // 3. 智慧合併會考模擬考 (Merge Mock Exams by ID or Title+Date)
     const mockMap = new Map();
     curMocks.forEach(m => {
       if (m && m.id) mockMap.set(String(m.id), m);
@@ -489,7 +501,17 @@ const DB = {
     });
     const mergedMocks = Array.from(mockMap.values());
 
-    // 4. 智慧合併目標學校
+    // 4. 智慧合併單科模模考 (Merge Mini Mocks by ID)
+    const miniMockMap = new Map();
+    curMiniMocks.forEach(m => { if (m && m.id) miniMockMap.set(String(m.id), m); });
+    incomingMiniMocks.forEach(m => {
+      if (m && m.id) {
+        miniMockMap.set(String(m.id), { ...(miniMockMap.get(String(m.id)) || {}), ...m });
+      }
+    });
+    const mergedMiniMocks = Array.from(miniMockMap.values());
+
+    // 5. 智慧合併目標學校
     const curSchools = await this.getAll('targetSchools');
     const schoolMap = new Map();
     curSchools.forEach(s => { if (s && s.id) schoolMap.set(String(s.id), s); });
@@ -500,7 +522,7 @@ const DB = {
     }
     const mergedSchools = Array.from(schoolMap.values());
 
-    // 5. 智慧合併錯題庫 (Merge Mistakes by ID)
+    // 6. 智慧合併錯題庫 (Merge Mistakes by ID)
     const mistakeMap = new Map();
     curMistakes.forEach(m => { if (m && m.id) mistakeMap.set(String(m.id), m); });
     incomingMistakes.forEach(m => {
@@ -516,6 +538,7 @@ const DB = {
       localStorage.setItem(`${p}quizzes`, JSON.stringify(mergedQuizzes));
       localStorage.setItem(`${p}termExams`, JSON.stringify(mergedTerms));
       localStorage.setItem(`${p}mockExams`, JSON.stringify(mergedMocks));
+      localStorage.setItem(`${p}miniMocks`, JSON.stringify(mergedMiniMocks));
       localStorage.setItem(`${p}mistakes`, JSON.stringify(mergedMistakes));
       if (mergedSchools.length > 0) localStorage.setItem(`${p}targetSchools`, JSON.stringify(mergedSchools));
       if (payload.settings) {
@@ -535,6 +558,9 @@ const DB = {
 
     await this.clear('mockExams');
     if (mergedMocks.length > 0) await this.bulkPut('mockExams', mergedMocks);
+
+    await this.clear('miniMocks');
+    if (mergedMiniMocks.length > 0) await this.bulkPut('miniMocks', mergedMiniMocks);
 
     await this.clear('mistakes');
     if (mergedMistakes.length > 0) await this.bulkPut('mistakes', mergedMistakes);

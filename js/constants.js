@@ -110,11 +110,78 @@ const CONSTANTS = {
 
   // 考試類別 (Exam Source)
   EXAM_TYPES: [
-    { id: 'mock', name: '會考模擬考', badgeClass: 'badge-primary' },
+    { id: 'mock', name: '會考全模考', badgeClass: 'badge-primary' },
+    { id: 'mini_mock', name: '單科模模考', badgeClass: 'badge-rose' },
     { id: 'term', name: '定期段考', badgeClass: 'badge-success' },
     { id: 'quiz', name: '小考評量', badgeClass: 'badge-warning' },
     { id: 'practice', name: '平時刷題/自訂', badgeClass: 'badge-info' }
   ],
+
+  // 國中會考單科等級標示標準門檻常模 (供模模考即時推估分數與等級)
+  CAP_CUTOFF_BENCHMARKS: {
+    CHINESE: {
+      totalItems: 42,
+      brackets: [
+        { notation: 'A++', minCorrect: 40, maxWrong: 2 },
+        { notation: 'A+', minCorrect: 38, maxWrong: 4 },
+        { notation: 'A', minCorrect: 36, maxWrong: 6 },
+        { notation: 'B++', minCorrect: 32, maxWrong: 10 },
+        { notation: 'B+', minCorrect: 27, maxWrong: 15 },
+        { notation: 'B', minCorrect: 19, maxWrong: 23 },
+        { notation: 'C', minCorrect: 0, maxWrong: 42 }
+      ]
+    },
+    ENGLISH: {
+      readingItems: 43,
+      listeningItems: 21,
+      brackets: [
+        { notation: 'A++', minWeighted: 98.05 },
+        { notation: 'A+', minWeighted: 95.20 },
+        { notation: 'A', minWeighted: 90.70 },
+        { notation: 'B++', minWeighted: 80.50 },
+        { notation: 'B+', minWeighted: 70.00 },
+        { notation: 'B', minWeighted: 38.50 },
+        { notation: 'C', minWeighted: 0 }
+      ]
+    },
+    MATH: {
+      choiceItems: 25,
+      nonChoiceMax: 6,
+      brackets: [
+        { notation: 'A++', minWeighted: 96.60 },
+        { notation: 'A+', minWeighted: 91.50 },
+        { notation: 'A', minWeighted: 81.30 },
+        { notation: 'B++', minWeighted: 70.00 },
+        { notation: 'B+', minWeighted: 58.00 },
+        { notation: 'B', minWeighted: 36.70 },
+        { notation: 'C', minWeighted: 0 }
+      ]
+    },
+    SCIENCE: {
+      totalItems: 50,
+      brackets: [
+        { notation: 'A++', minCorrect: 47, maxWrong: 3 },
+        { notation: 'A+', minCorrect: 45, maxWrong: 5 },
+        { notation: 'A', minCorrect: 42, maxWrong: 8 },
+        { notation: 'B++', minCorrect: 36, maxWrong: 14 },
+        { notation: 'B+', minCorrect: 29, maxWrong: 21 },
+        { notation: 'B', minCorrect: 20, maxWrong: 30 },
+        { notation: 'C', minCorrect: 0, maxWrong: 50 }
+      ]
+    },
+    SOCIAL: {
+      totalItems: 54,
+      brackets: [
+        { notation: 'A++', minCorrect: 52, maxWrong: 2 },
+        { notation: 'A+', minCorrect: 50, maxWrong: 4 },
+        { notation: 'A', minCorrect: 47, maxWrong: 7 },
+        { notation: 'B++', minCorrect: 41, maxWrong: 13 },
+        { notation: 'B+', minCorrect: 34, maxWrong: 20 },
+        { notation: 'B', minCorrect: 22, maxWrong: 32 },
+        { notation: 'C', minCorrect: 0, maxWrong: 54 }
+      ]
+    }
+  },
 
   // 小考測驗類型
   QUIZ_TYPES: [

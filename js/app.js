@@ -73,10 +73,11 @@ const App = {
   },
 
   async loadAllData() {
-    const [quizzes, termExams, mockExams, targetSchools, mistakes, settings] = await Promise.all([
+    const [quizzes, termExams, mockExams, miniMocks, targetSchools, mistakes, settings] = await Promise.all([
       DB.getAll('quizzes'),
       DB.getAll('termExams'),
       DB.getAll('mockExams'),
+      DB.getAll('miniMocks'),
       DB.getAll('targetSchools'),
       DB.getAll('mistakes'),
       DB.get('settings', 'main')
@@ -86,6 +87,7 @@ const App = {
       quizzes: quizzes || [],
       termExams: termExams || [],
       mockExams: mockExams || [],
+      miniMocks: miniMocks || [],
       targetSchools: targetSchools && targetSchools.length > 0 ? targetSchools : CONSTANTS.TARGET_SCHOOLS_DB,
       mistakes: mistakes || [],
       settings: settings || SEED_DATA.settings
@@ -124,7 +126,7 @@ const App = {
   },
 
   /**
-   * 切換主模組 (模考 / 段考 / 小考)
+   * 切換主模組 (全模 / 單科模模考 / 段考 / 小考)
    */
   switchModule(moduleId) {
     this.currentModule = moduleId;
@@ -168,7 +170,7 @@ const App = {
     const mainContainer = document.getElementById('view-content-area');
     if (!mainContainer) return;
 
-    const { quizzes, termExams, mockExams, targetSchools, settings } = this.cachedData;
+    const { quizzes, termExams, mockExams, miniMocks, targetSchools, settings } = this.cachedData;
 
     // 1. 儀表板視圖
     if (this.currentView === 'dashboard') {
@@ -192,6 +194,8 @@ const App = {
     if (this.currentView === 'grid') {
       if (this.currentModule === 'mock') {
         BitableGrid.renderMockExamGrid('view-content-area', mockExams, settings.district || 'KEELUNG_TAIPEI');
+      } else if (this.currentModule === 'mini_mock') {
+        BitableGrid.renderMiniMockGrid('view-content-area', miniMocks);
       } else if (this.currentModule === 'term') {
         BitableGrid.renderTermExamGrid('view-content-area', termExams);
       } else if (this.currentModule === 'quiz') {
@@ -206,6 +210,7 @@ const App = {
   openQuickAddModal() {
     if (this.currentView === 'grid') {
       if (this.currentModule === 'mock') return this.openMockModal();
+      if (this.currentModule === 'mini_mock') return this.openMiniMockModal();
       if (this.currentModule === 'term') return this.openTermModal();
       if (this.currentModule === 'quiz') return this.openQuizModal();
     }
@@ -228,8 +233,21 @@ const App = {
                   <i data-lucide="target" class="w-5 h-5"></i>
                 </div>
                 <div>
-                  <h4 class="font-bold text-sm text-primary group-hover:text-primary-blue transition-colors">會考模擬考評量</h4>
-                  <p class="text-2xs text-muted">10 秒快速矩陣點選 • 換算 36 點與雙北落點排名</p>
+                  <h4 class="font-bold text-sm text-primary group-hover:text-primary-blue transition-colors">會考全真模擬考</h4>
+                  <p class="text-2xs text-muted">全科矩陣點選 • 換算 36 點/積分與高中志願落點</p>
+                </div>
+              </div>
+              <i data-lucide="chevron-right" class="w-4 h-4 text-muted group-hover:text-primary transition-transform group-hover:translate-x-1"></i>
+            </div>
+
+            <div class="p-3.5 rounded-lg border border-border bg-card/60 hover:bg-card hover:border-rose-400/50 transition-all cursor-pointer flex items-center justify-between group" onclick="App.closeModal(); App.openMiniMockModal();">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-rose-500/15 text-rose-400 flex items-center justify-center font-bold">
+                  <i data-lucide="calculator" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h4 class="font-bold text-sm text-primary group-hover:text-rose-400 transition-colors">🎯 單科模模考 (即時算分)</h4>
+                  <p class="text-2xs text-muted">輸入單科答對題數 • 即時推算等級標示 (A++~C) 與換算積點</p>
                 </div>
               </div>
               <i data-lucide="chevron-right" class="w-4 h-4 text-muted group-hover:text-primary transition-transform group-hover:translate-x-1"></i>
@@ -261,13 +279,13 @@ const App = {
               <i data-lucide="chevron-right" class="w-4 h-4 text-muted group-hover:text-primary transition-transform group-hover:translate-x-1"></i>
             </div>
 
-            <div class="p-3.5 rounded-lg border border-border bg-card/60 hover:bg-card hover:border-rose-500/50 transition-all cursor-pointer flex items-center justify-between group" onclick="App.closeModal(); App.openAddMistakeModal();">
+            <div class="p-3.5 rounded-lg border border-border bg-card/60 hover:bg-card hover:border-warning/50 transition-all cursor-pointer flex items-center justify-between group" onclick="App.closeModal(); App.openAddMistakeModal();">
               <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-lg bg-rose-500/15 text-rose-400 flex items-center justify-center font-bold">
+                <div class="w-10 h-10 rounded-lg bg-warning/15 text-warning flex items-center justify-center font-bold">
                   <i data-lucide="book-open" class="w-5 h-5"></i>
                 </div>
                 <div>
-                  <h4 class="font-bold text-sm text-primary group-hover:text-rose-400 transition-colors">收錄各考種錯題與盲點</h4>
+                  <h4 class="font-bold text-sm text-primary group-hover:text-warning transition-colors">收錄各考種錯題與盲點</h4>
                   <p class="text-2xs text-muted">記錄題型、思路障礙與核心盲點 • 匯出 AI 深度診斷與變形題出題</p>
                 </div>
               </div>
@@ -632,6 +650,394 @@ const App = {
     BitableGrid.searchQuery = '';
     this.closeModal();
     this.showToast('會考模擬考成績儲存成功！', 'success');
+    this.triggerBackgroundSyncPush();
+  },
+
+  // ==========================================
+  // 1.5 單科模模考錄入彈窗 (即時換算會考標示與積點)
+  // ==========================================
+  openMiniMockModal(editId = null) {
+    const isEdit = Boolean(editId);
+    const item = isEdit ? this.cachedData.miniMocks.find(m => m.id === editId) : null;
+    const currentSubject = item ? item.subject : 'CHINESE';
+
+    const modalHtml = `
+      <div class="modal-backdrop" onclick="App.closeModal(event)">
+        <div class="modal-card modal-lg" onclick="event.stopPropagation()">
+          <div class="modal-header flex items-center justify-between pb-3 border-b border-border">
+            <div class="flex items-center gap-2">
+              <i data-lucide="target" class="w-5 h-5 text-indigo-400"></i>
+              <h3 class="font-bold text-base text-primary">${isEdit ? '編輯單科模模考紀錄' : '新增單科模模考 (即時算分)'}</h3>
+            </div>
+            <button class="btn-icon" onclick="App.closeModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+
+          <form id="form-mini-mock" onsubmit="App.saveMiniMockExam(event, '${editId || ''}')" class="modal-body py-4 space-y-4 max-h-[75vh] overflow-y-auto">
+            
+            <!-- 基本資訊：科目、考次名稱、測驗日期 -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="form-label">測驗學科 (會考考科) *</label>
+                <select id="mini-mock-subject" class="form-input font-bold" required onchange="App.onMiniMockSubjectChange(this.value)">
+                  ${CONSTANTS.SUBJECTS.map(s => `
+                    <option value="${s.id}" ${currentSubject === s.id ? 'selected' : ''}>${s.name} (${s.group})</option>
+                  `).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="form-label">單元或試卷名稱 *</label>
+                <input type="text" id="mini-mock-title" required class="form-input" value="${item ? (item.title || item.unitName || '') : ''}" placeholder="如：歷屆112會考單科、1~4冊複習卷" />
+              </div>
+              <div>
+                <label class="form-label">測驗日期 *</label>
+                <input type="date" id="mini-mock-date" required class="form-input" value="${item ? item.date : new Date().toISOString().slice(0, 10)}" />
+              </div>
+            </div>
+
+            <!-- 動態題數輸入欄位 (切換科目時自動抽換) -->
+            <div id="mini-mock-inputs-container" class="p-3.5 rounded-lg bg-surface/70 border border-border space-y-3">
+              <!-- 由 onMiniMockSubjectChange 動態渲染 -->
+            </div>
+
+            <!-- 即時會考等級標示與加權算分預覽看板 (Live Preview) -->
+            <div class="p-4 rounded-xl bg-gradient-to-r from-card to-surface border border-primary-blue/30 shadow-sm space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-secondary flex items-center gap-1.5">
+                  <i data-lucide="activity" class="w-4 h-4 text-primary-blue"></i>
+                  即時會考等級推估看板 (國中教育會考常模)
+                </span>
+                <span id="mini-mock-upgrade-hint" class="text-3xs text-warning font-medium"></span>
+              </div>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div class="p-2.5 rounded-lg bg-card/80 border border-border">
+                  <div class="text-3xs text-muted">推估等級標示</div>
+                  <div id="mini-mock-preview-notation" class="text-xl font-black text-primary font-mono mt-0.5">--</div>
+                </div>
+                <div class="p-2.5 rounded-lg bg-card/80 border border-border">
+                  <div class="text-3xs text-muted">加權/實得分數</div>
+                  <div id="mini-mock-preview-weighted" class="text-xl font-bold text-primary font-mono mt-0.5">--</div>
+                </div>
+                <div class="p-2.5 rounded-lg bg-card/80 border border-border">
+                  <div class="text-3xs text-muted">換算積點 (基北/各區)</div>
+                  <div id="mini-mock-preview-points" class="text-xl font-bold text-primary-blue font-mono mt-0.5">-- 點</div>
+                </div>
+                <div class="p-2.5 rounded-lg bg-card/80 border border-border">
+                  <div class="text-3xs text-muted">積分等級</div>
+                  <div id="mini-mock-preview-credits" class="text-xl font-bold text-success font-mono mt-0.5">-- 分</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 核心觀念盲點與解題漏洞 -->
+            <div>
+              <label class="form-label text-warning flex items-center gap-1.5">
+                <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
+                <span>單科失分盲點與易混淆觀念</span>
+              </label>
+              <input type="text" id="mini-mock-blindspot" class="form-input border-warning/40 focus:border-warning font-medium" value="${item ? (item.blindspot || '') : ''}" placeholder="例如：克漏字時態推論失誤、二次函數配方法計算粗心、力與運動圖形判讀混淆..." />
+            </div>
+
+            <div>
+              <label class="form-label">檢討與備註</label>
+              <textarea id="mini-mock-notes" class="form-input" rows="2" placeholder="記錄時間分配、答題節奏、手感等...">${item ? (item.notes || '') : ''}</textarea>
+            </div>
+
+            <!-- 本次模模考收錄錯題快捷入口 -->
+            ${isEdit ? `
+              <div class="p-3 rounded-lg bg-surface/70 border border-border flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="book-open" class="w-4 h-4 text-rose-400"></i>
+                  <span class="text-xs font-bold text-primary">本次單科模模考錯題：</span>
+                  <span class="badge badge-primary text-3xs font-mono">${(this.cachedData.mistakes || []).filter(m => m.examId === editId).length} 題</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button type="button" class="btn-secondary text-2xs py-1 px-2.5 text-primary-blue border-primary-blue/40" onclick="App.openAddMistakeModal(null, { examId: '${editId}', examType: 'mini_mock', date: '${item.date}', subject: '${item.subject}', unitName: '${item.title || item.unitName}' })">
+                    <i data-lucide="plus" class="w-3.5 h-3.5 inline mr-0.5"></i>收錄本卷錯題
+                  </button>
+                  ${(this.cachedData.mistakes || []).filter(m => m.examId === editId).length > 0 ? `
+                    <button type="button" class="btn-secondary text-2xs py-1 px-2.5 text-warning border-warning/40" onclick="App.openAIExportModal('${editId}', 'mini_mock')">
+                      <i data-lucide="sparkles" class="w-3.5 h-3.5 inline mr-0.5"></i>AI 診斷本卷
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            ` : ''}
+
+            <div class="modal-footer flex items-center justify-end gap-3 pt-3 border-t border-border">
+              <button type="button" class="btn-secondary" onclick="App.closeModal()">取消</button>
+              <button type="submit" class="btn-primary">儲存單科模模考紀錄</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    this.renderModal(modalHtml);
+    this.onMiniMockSubjectChange(currentSubject, item);
+  },
+
+  onMiniMockSubjectChange(subject, existingItem = null) {
+    const container = document.getElementById('mini-mock-inputs-container');
+    if (!container) return;
+
+    let inputsHtml = '';
+
+    if (subject === 'ENGLISH') {
+      const rCor = existingItem ? (existingItem.readingCorrect ?? '') : '';
+      const rTot = existingItem ? (existingItem.readingTotal ?? 43) : 43;
+      const lCor = existingItem ? (existingItem.listeningCorrect ?? '') : '';
+      const lTot = existingItem ? (existingItem.listeningTotal ?? 21) : 21;
+
+      inputsHtml = `
+        <div class="flex items-center justify-between pb-1.5 border-b border-border/50">
+          <span class="text-xs font-bold text-primary flex items-center gap-1.5">
+            <i data-lucide="headphones" class="w-3.5 h-3.5 text-primary-blue"></i>
+            英語科題數輸入 (閱讀 80% + 聽力 20%)
+          </span>
+          <span class="text-3xs text-muted">滿分100加權分</span>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div>
+            <label class="form-label">閱讀答對題數 *</label>
+            <input type="number" id="mini-en-reading-correct" min="0" max="${rTot}" class="form-input" value="${rCor}" placeholder="如 38" oninput="App.onMiniMockRecalculate()" required />
+          </div>
+          <div>
+            <label class="form-label">閱讀總題數</label>
+            <input type="number" id="mini-en-reading-total" min="1" class="form-input" value="${rTot}" oninput="App.onMiniMockRecalculate()" />
+          </div>
+          <div>
+            <label class="form-label">聽力答對題數 *</label>
+            <input type="number" id="mini-en-listening-correct" min="0" max="${lTot}" class="form-input" value="${lCor}" placeholder="如 20" oninput="App.onMiniMockRecalculate()" required />
+          </div>
+          <div>
+            <label class="form-label">聽力總題數</label>
+            <input type="number" id="mini-en-listening-total" min="1" class="form-input" value="${lTot}" oninput="App.onMiniMockRecalculate()" />
+          </div>
+        </div>
+      `;
+    } else if (subject === 'MATH') {
+      const cCor = existingItem ? (existingItem.choiceCorrect ?? '') : '';
+      const cTot = existingItem ? (existingItem.choiceTotal ?? 25) : 25;
+      const ncSc = existingItem ? (existingItem.nonChoiceScore ?? '') : '';
+      const ncTot = existingItem ? (existingItem.nonChoiceMaxScore ?? 6) : 6;
+
+      inputsHtml = `
+        <div class="flex items-center justify-between pb-1.5 border-b border-border/50">
+          <span class="text-xs font-bold text-primary flex items-center gap-1.5">
+            <i data-lucide="calculator" class="w-3.5 h-3.5 text-primary-blue"></i>
+            數學科題數與非選得分輸入 (選擇 85% + 非選 15%)
+          </span>
+          <span class="text-3xs text-muted">滿分100加權分</span>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div>
+            <label class="form-label">選擇題答對題數 *</label>
+            <input type="number" id="mini-ma-choice-correct" min="0" max="${cTot}" class="form-input" value="${cCor}" placeholder="如 23" oninput="App.onMiniMockRecalculate()" required />
+          </div>
+          <div>
+            <label class="form-label">選擇總題數</label>
+            <input type="number" id="mini-ma-choice-total" min="1" class="form-input" value="${cTot}" oninput="App.onMiniMockRecalculate()" />
+          </div>
+          <div>
+            <label class="form-label">非選擇題得分 (0~${ncTot}) *</label>
+            <input type="number" step="0.5" id="mini-ma-nonchoice-score" min="0" max="${ncTot}" class="form-input" value="${ncSc}" placeholder="如 5" oninput="App.onMiniMockRecalculate()" required />
+          </div>
+          <div>
+            <label class="form-label">非選擇題滿分</label>
+            <input type="number" id="mini-ma-nonchoice-total" min="1" class="form-input" value="${ncTot}" oninput="App.onMiniMockRecalculate()" />
+          </div>
+        </div>
+      `;
+    } else if (subject === 'WRITING') {
+      const wGrade = existingItem ? (existingItem.writingGrade ?? 5) : 5;
+      inputsHtml = `
+        <div class="flex items-center justify-between pb-1.5 border-b border-border/50">
+          <span class="text-xs font-bold text-primary flex items-center gap-1.5">
+            <i data-lucide="feather" class="w-3.5 h-3.5 text-primary-blue"></i>
+            寫作測驗級分 (0~6 級分)
+          </span>
+        </div>
+        <div class="space-y-2">
+          <input type="hidden" id="mini-writing-grade" value="${wGrade}" />
+          <div class="writing-btn-group grid grid-cols-7 gap-1">
+            ${[0, 1, 2, 3, 4, 5, 6].map(g => `
+              <button type="button" class="btn-tier ${g === Number(wGrade) ? 'active' : ''}" data-grade="${g}" onclick="App.selectMiniWritingGrade(${g})">
+                ${g}級分
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    } else {
+      // 國文、自然、社會或分科
+      let defaultTotal = 50;
+      if (subject === 'CHINESE') defaultTotal = 42;
+      else if (subject === 'SOCIAL' || subject === 'HISTORY' || subject === 'GEOGRAPHY' || subject === 'CIVICS') defaultTotal = 54;
+      else if (subject === 'SCIENCE' || subject === 'PHYSICS_CHEM' || subject === 'BIOLOGY' || subject === 'EARTH_SCI') defaultTotal = 50;
+
+      const rawCor = existingItem ? (existingItem.rawCorrect ?? '') : '';
+      const totQ = existingItem ? (existingItem.totalQuestions ?? defaultTotal) : defaultTotal;
+
+      inputsHtml = `
+        <div class="flex items-center justify-between pb-1.5 border-b border-border/50">
+          <span class="text-xs font-bold text-primary flex items-center gap-1.5">
+            <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-primary-blue"></i>
+            ${CONSTANTS.SUBJECTS.find(s => s.id === subject)?.name || '單科'} 答對題數輸入
+          </span>
+          <span class="text-3xs text-muted">標準會考常模約 ${defaultTotal} 題</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="form-label">答對題數 *</label>
+            <input type="number" id="mini-raw-correct" min="0" max="${totQ}" class="form-input text-lg font-bold" value="${rawCor}" placeholder="如 40" oninput="App.onMiniMockRecalculate()" required />
+          </div>
+          <div>
+            <label class="form-label">試卷總題數</label>
+            <input type="number" id="mini-total-questions" min="1" class="form-input" value="${totQ}" oninput="App.onMiniMockRecalculate()" />
+          </div>
+        </div>
+      `;
+    }
+
+    container.innerHTML = inputsHtml;
+    lucide.createIcons();
+    this.onMiniMockRecalculate();
+  },
+
+  selectMiniWritingGrade(grade) {
+    const input = document.getElementById('mini-writing-grade');
+    if (input) input.value = grade;
+    document.querySelectorAll('.writing-btn-group .btn-tier').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.grade) === grade);
+    });
+    this.onMiniMockRecalculate();
+  },
+
+  onMiniMockRecalculate() {
+    const subject = document.getElementById('mini-mock-subject')?.value || 'CHINESE';
+    let params = {};
+
+    if (subject === 'ENGLISH') {
+      const rEl = document.getElementById('mini-en-reading-correct');
+      const rtEl = document.getElementById('mini-en-reading-total');
+      const lEl = document.getElementById('mini-en-listening-correct');
+      const ltEl = document.getElementById('mini-en-listening-total');
+
+      params = {
+        readingCorrect: rEl && rEl.value !== '' ? Number(rEl.value) : 0,
+        readingTotal: rtEl && rtEl.value !== '' ? Number(rtEl.value) : 43,
+        listeningCorrect: lEl && lEl.value !== '' ? Number(lEl.value) : 0,
+        listeningTotal: ltEl && ltEl.value !== '' ? Number(ltEl.value) : 21
+      };
+    } else if (subject === 'MATH') {
+      const cEl = document.getElementById('mini-ma-choice-correct');
+      const ctEl = document.getElementById('mini-ma-choice-total');
+      const ncEl = document.getElementById('mini-ma-nonchoice-score');
+      const nctEl = document.getElementById('mini-ma-nonchoice-total');
+
+      params = {
+        choiceCorrect: cEl && cEl.value !== '' ? Number(cEl.value) : 0,
+        choiceTotal: ctEl && ctEl.value !== '' ? Number(ctEl.value) : 25,
+        nonChoiceScore: ncEl && ncEl.value !== '' ? Number(ncEl.value) : 0,
+        nonChoiceMaxScore: nctEl && nctEl.value !== '' ? Number(nctEl.value) : 6
+      };
+    } else if (subject === 'WRITING') {
+      const wEl = document.getElementById('mini-writing-grade');
+      params = {
+        writingGrade: wEl ? Number(wEl.value || 5) : 5
+      };
+    } else {
+      const rcEl = document.getElementById('mini-raw-correct');
+      const tqEl = document.getElementById('mini-total-questions');
+      params = {
+        rawCorrect: rcEl && rcEl.value !== '' ? Number(rcEl.value) : 0,
+        totalQuestions: tqEl && tqEl.value !== '' ? Number(tqEl.value) : 50
+      };
+    }
+
+    const res = ScoringEngine.estimateSingleMockScore(subject, params);
+
+    const notEl = document.getElementById('mini-mock-preview-notation');
+    const wtEl = document.getElementById('mini-mock-preview-weighted');
+    const ptEl = document.getElementById('mini-mock-preview-points');
+    const crEl = document.getElementById('mini-mock-preview-credits');
+    const hintEl = document.getElementById('mini-mock-upgrade-hint');
+
+    if (notEl) {
+      notEl.innerHTML = `<span class="badge ${res.notation.startsWith('A') ? 'badge-primary' : res.notation.startsWith('B') ? 'badge-success' : 'badge-danger'} text-base">${res.notation}</span>`;
+    }
+    if (wtEl) wtEl.textContent = res.weightedScore !== null ? `${res.weightedScore} 分` : '--';
+    if (ptEl) ptEl.textContent = `${res.points} 點`;
+    if (crEl) crEl.textContent = `${res.credits} 分`;
+    if (hintEl) hintEl.textContent = res.upgradeHint || '';
+  },
+
+  async saveMiniMockExam(event, editId) {
+    event.preventDefault();
+    const subject = document.getElementById('mini-mock-subject').value;
+    const title = document.getElementById('mini-mock-title').value;
+    const date = document.getElementById('mini-mock-date').value;
+    const blindspot = document.getElementById('mini-mock-blindspot')?.value || '';
+    const notes = document.getElementById('mini-mock-notes')?.value || '';
+
+    let params = {};
+    let itemExtra = {};
+
+    if (subject === 'ENGLISH') {
+      const rCor = Number(document.getElementById('mini-en-reading-correct').value || 0);
+      const rTot = Number(document.getElementById('mini-en-reading-total').value || 43);
+      const lCor = Number(document.getElementById('mini-en-listening-correct').value || 0);
+      const lTot = Number(document.getElementById('mini-en-listening-total').value || 21);
+
+      params = { readingCorrect: rCor, readingTotal: rTot, listeningCorrect: lCor, listeningTotal: lTot };
+      itemExtra = { readingCorrect: rCor, readingTotal: rTot, listeningCorrect: lCor, listeningTotal: lTot };
+    } else if (subject === 'MATH') {
+      const cCor = Number(document.getElementById('mini-ma-choice-correct').value || 0);
+      const cTot = Number(document.getElementById('mini-ma-choice-total').value || 25);
+      const ncSc = Number(document.getElementById('mini-ma-nonchoice-score').value || 0);
+      const ncTot = Number(document.getElementById('mini-ma-nonchoice-total').value || 6);
+
+      params = { choiceCorrect: cCor, choiceTotal: cTot, nonChoiceScore: ncSc, nonChoiceMaxScore: ncTot };
+      itemExtra = { choiceCorrect: cCor, choiceTotal: cTot, nonChoiceScore: ncSc, nonChoiceMaxScore: ncTot };
+    } else if (subject === 'WRITING') {
+      const wGrade = Number(document.getElementById('mini-writing-grade')?.value || 5);
+      params = { writingGrade: wGrade };
+      itemExtra = { writingGrade: wGrade };
+    } else {
+      const rc = Number(document.getElementById('mini-raw-correct').value || 0);
+      const tq = Number(document.getElementById('mini-total-questions').value || 50);
+
+      params = { rawCorrect: rc, totalQuestions: tq };
+      itemExtra = { rawCorrect: rc, totalQuestions: tq };
+    }
+
+    const calcRes = ScoringEngine.estimateSingleMockScore(subject, params);
+
+    const miniMockItem = {
+      id: editId || `mm_${Date.now()}`,
+      title,
+      unitName: title,
+      date,
+      subject,
+      notation: calcRes.notation,
+      weightedScore: calcRes.weightedScore,
+      points: calcRes.points,
+      credits: calcRes.credits,
+      upgradeHint: calcRes.upgradeHint,
+      blindspot,
+      notes,
+      ...itemExtra
+    };
+
+    await DB.put('miniMocks', miniMockItem);
+    await this.loadAllData();
+    this.refreshCurrentView();
+    BitableGrid.selectedSubject = 'ALL';
+    BitableGrid.selectedFilter = 'ALL';
+    BitableGrid.searchQuery = '';
+    this.closeModal();
+    this.showToast('單科模模考紀錄儲存成功！', 'success');
     this.triggerBackgroundSyncPush();
   },
 
