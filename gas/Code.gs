@@ -97,6 +97,7 @@ function doPost(e) {
       if (data.termExams) syncTermExamsSheet(userEmail, data.termExams);
       if (data.mockExams) syncMockExamsSheet(userEmail, data.mockExams);
       if (data.targetSchools) syncTargetSchoolsSheet(userEmail, data.targetSchools);
+      if (data.mistakes) syncMistakesSheet(userEmail, data.mistakes);
       if (data.settings) syncSettingsSheet(userEmail, data.settings);
       
       return createJsonResponse({
@@ -107,7 +108,8 @@ function doPost(e) {
         counts: {
           quizzes: data.quizzes ? data.quizzes.length : 0,
           termExams: data.termExams ? data.termExams.length : 0,
-          mockExams: data.mockExams ? data.mockExams.length : 0
+          mockExams: data.mockExams ? data.mockExams.length : 0,
+          mistakes: data.mistakes ? data.mistakes.length : 0
         }
       });
     }
@@ -171,8 +173,12 @@ function autoFormatSpreadsheet() {
   var settingSheet = getOrCreateSheet(ss, '系統設定與備份');
   setupSettingSheetHeader(settingSheet);
   
+  // 6. 格式化「錯題收錄與分析」
+  var mistakeSheet = getOrCreateSheet(ss, '錯題收錄與分析');
+  setupMistakeSheetHeader(mistakeSheet);
+
   return {
-    sheets: ['使用者帳號管理', '模擬考會考專區', '定期段考評量', '小考評量紀錄', '目標高中與志願', '系統設定與備份'],
+    sheets: ['使用者帳號管理', '模擬考會考專區', '定期段考評量', '小考評量紀錄', '目標高中與志願', '錯題收錄與分析', '系統設定與備份'],
     formattedAt: new Date().toISOString()
   };
 }
@@ -256,6 +262,16 @@ function setupTargetSheetHeader(sheet) {
 // 5. 系統設定 (首欄為使用者帳號)
 function setupSettingSheetHeader(sheet) {
   var headers = ['使用者帳號', '設定鍵 (Key)', '設定值 (Value)', '最後更新時間'];
+  applyHeaderStyle(sheet, headers);
+}
+
+// 6. 錯題收錄與分析 (首欄為使用者帳號)
+function setupMistakeSheetHeader(sheet) {
+  var headers = [
+    '使用者帳號', 'ID', '關聯考卷ID', '考種', '測驗日期', '科目', '單元章節',
+    '題型', '題號或標題', '題目題幹描述', '學生作答與思路', '正確答案與解法',
+    '錯題歸因標籤', '掌握度等級', '盲點與複習重點', '下次複習日期', '建立時間'
+  ];
   applyHeaderStyle(sheet, headers);
 }
 
@@ -638,6 +654,55 @@ function syncSettingsSheet(userEmail, settings) {
   }
 }
 
+function syncMistakesSheet(userEmail, items) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = getOrCreateSheet(ss, '錯題收錄與分析');
+  
+  var lastRow = sheet.getLastRow();
+  var remainingRows = [];
+  if (lastRow > 1) {
+    var existingVals = sheet.getRange(2, 1, lastRow - 1, 17).getValues();
+    remainingRows = existingVals.filter(function(r) {
+      var rowUser = String(r[0] || '').trim().toLowerCase();
+      if (rowUser === userEmail) return false;
+      if (rowUser === '' && userEmail === DEFAULT_OWNER_EMAIL) return false;
+      return true;
+    });
+  }
+  
+  var newRows = (items || []).map(function(item) {
+    var tags = Array.isArray(item.errorTags) ? item.errorTags.join(', ') : (item.errorTags || '');
+    return [
+      userEmail,
+      item.id || '',
+      item.examId || '',
+      item.examType || 'quiz',
+      item.date || '',
+      item.subject || 'CHINESE',
+      item.unitName || '',
+      item.questionType || 'concept',
+      item.title || '',
+      item.questionText || '',
+      item.studentAnswer || '',
+      item.correctAnswer || '',
+      tags,
+      item.masteryLevel !== undefined ? Number(item.masteryLevel) : 1,
+      item.blindspot || '',
+      item.nextReviewDate || '',
+      item.createdAt || new Date().toISOString()
+    ];
+  });
+  
+  var finalRows = remainingRows.concat(newRows);
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
+  }
+  if (finalRows.length > 0) {
+    sheet.getRange(2, 1, finalRows.length, finalRows[0].length).setValues(finalRows);
+    sheet.autoResizeColumns(1, finalRows[0].length);
+  }
+}
+
 // ==========================================
 // 多租戶數據拉取 (Fetch By User)
 // ==========================================
@@ -824,6 +889,41 @@ function fetchAllSheetsData(userEmail) {
       setObj[key] = val;
     });
     result.settings = setObj;
+  }
+
+  // 6. 讀取錯題收錄與分析 (以 userEmail 過濾)
+  var mistakeSheet = ss.getSheetByName('錯題收錄與分析');
+  if (mistakeSheet && mistakeSheet.getLastRow() > 1) {
+    var mkValues = mistakeSheet.getRange(2, 1, mistakeSheet.getLastRow() - 1, 17).getValues();
+    result.mistakes = mkValues.filter(function(r) {
+      var rowUser = String(r[0] || '').trim().toLowerCase();
+      if (rowUser === userEmail) return true;
+      if (rowUser === '' && userEmail === DEFAULT_OWNER_EMAIL) return true;
+      return false;
+    }).filter(function(r) {
+      return (r[1] !== '' || r[8] !== '' || r[9] !== '');
+    }).map(function(r, idx) {
+      return {
+        id: r[1] ? String(r[1]) : ('mk_' + new Date().getTime() + '_' + idx),
+        examId: String(r[2] || ''),
+        examType: String(r[3] || 'quiz'),
+        date: formatDate(r[4]) || new Date().toISOString().slice(0, 10),
+        subject: String(r[5] || 'CHINESE'),
+        unitName: String(r[6] || ''),
+        questionType: String(r[7] || 'concept'),
+        title: String(r[8] || '錯題紀錄'),
+        questionText: String(r[9] || ''),
+        studentAnswer: String(r[10] || ''),
+        correctAnswer: String(r[11] || ''),
+        errorTags: r[12] ? String(r[12]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [],
+        masteryLevel: (r[13] !== '' && !isNaN(r[13])) ? Number(r[13]) : 1,
+        blindspot: String(r[14] || ''),
+        nextReviewDate: formatDate(r[15]) || '',
+        createdAt: r[16] ? String(r[16]) : new Date().toISOString()
+      };
+    });
+  } else {
+    result.mistakes = [];
   }
   
   return result;

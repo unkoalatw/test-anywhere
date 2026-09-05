@@ -73,11 +73,12 @@ const App = {
   },
 
   async loadAllData() {
-    const [quizzes, termExams, mockExams, targetSchools, settings] = await Promise.all([
+    const [quizzes, termExams, mockExams, targetSchools, mistakes, settings] = await Promise.all([
       DB.getAll('quizzes'),
       DB.getAll('termExams'),
       DB.getAll('mockExams'),
       DB.getAll('targetSchools'),
+      DB.getAll('mistakes'),
       DB.get('settings', 'main')
     ]);
 
@@ -86,6 +87,7 @@ const App = {
       termExams: termExams || [],
       mockExams: mockExams || [],
       targetSchools: targetSchools && targetSchools.length > 0 ? targetSchools : CONSTANTS.TARGET_SCHOOLS_DB,
+      mistakes: mistakes || [],
       settings: settings || SEED_DATA.settings
     };
 
@@ -180,9 +182,9 @@ const App = {
       return;
     }
 
-    // 3. 錯題筆記畫廊視圖
+    // 3. 錯題筆記與 AI 診斷畫廊視圖
     if (this.currentView === 'gallery') {
-      BitableGallery.renderGallery('view-content-area', quizzes);
+      BitableGallery.renderGallery('view-content-area', this.cachedData);
       return;
     }
 
@@ -254,6 +256,19 @@ const App = {
                 <div>
                   <h4 class="font-bold text-sm text-primary group-hover:text-success transition-colors">定期段考評量</h4>
                   <p class="text-2xs text-muted">9 大考科分科實得分數 • 班平均 / 高低標 / 排名</p>
+                </div>
+              </div>
+              <i data-lucide="chevron-right" class="w-4 h-4 text-muted group-hover:text-primary transition-transform group-hover:translate-x-1"></i>
+            </div>
+
+            <div class="p-3.5 rounded-lg border border-border bg-card/60 hover:bg-card hover:border-rose-500/50 transition-all cursor-pointer flex items-center justify-between group" onclick="App.closeModal(); App.openAddMistakeModal();">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-rose-500/15 text-rose-400 flex items-center justify-center font-bold">
+                  <i data-lucide="book-open" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h4 class="font-bold text-sm text-primary group-hover:text-rose-400 transition-colors">收錄各考種錯題與盲點</h4>
+                  <p class="text-2xs text-muted">記錄題型、思路障礙與核心盲點 • 匯出 AI 深度診斷與變形題出題</p>
                 </div>
               </div>
               <i data-lucide="chevron-right" class="w-4 h-4 text-muted group-hover:text-primary transition-transform group-hover:translate-x-1"></i>
@@ -446,6 +461,27 @@ const App = {
               <label class="form-label">模考總結與弱點筆記</label>
               <textarea id="mock-notes" class="form-input" rows="2" placeholder="紀錄本次模考失分原因、非選步驟、時間分配心得...">${item ? (item.notes || '') : ''}</textarea>
             </div>
+
+            <!-- 本卷錯題收錄與 AI 深度診斷快捷入口 -->
+            ${isEdit ? `
+              <div class="p-3 rounded-lg bg-surface/70 border border-border flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="book-open" class="w-4 h-4 text-rose-400"></i>
+                  <span class="text-xs font-bold text-primary">本次模考收錄錯題：</span>
+                  <span class="badge badge-primary text-3xs font-mono">${(this.cachedData.mistakes || []).filter(m => m.examId === editId).length} 題</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button type="button" class="btn-secondary text-2xs py-1 px-2.5 text-primary-blue border-primary-blue/40" onclick="App.openAddMistakeModal(null, { examId: '${editId}', examType: 'mock', date: '${item.date}', title: '${item.title}' })">
+                    <i data-lucide="plus" class="w-3 h-3 inline mr-0.5"></i>收錄本卷錯題
+                  </button>
+                  ${(this.cachedData.mistakes || []).filter(m => m.examId === editId).length > 0 ? `
+                    <button type="button" class="btn-secondary text-2xs py-1 px-2.5 text-warning border-warning/40" onclick="App.openAIExportModal('${editId}', 'mock')">
+                      <i data-lucide="sparkles" class="w-3 h-3 inline mr-0.5"></i>AI 診斷本卷
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            ` : ''}
 
             <div class="modal-footer flex items-center justify-end gap-3 pt-3 border-t border-border">
               <button type="button" class="btn-secondary" onclick="App.closeModal()">取消</button>
@@ -696,6 +732,27 @@ const App = {
               <textarea id="quiz-notes" class="form-input" rows="2" placeholder="記錄重要公式推導、容易混淆的關鍵字...">${item ? (item.notes || '') : ''}</textarea>
             </div>
 
+            <!-- 本小考錯題收錄與 AI 深度診斷快捷入口 -->
+            ${isEdit ? `
+              <div class="p-3 rounded-lg bg-surface/70 border border-border flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="book-open" class="w-4 h-4 text-rose-400"></i>
+                  <span class="text-xs font-bold text-primary">本次小考收錄錯題：</span>
+                  <span class="badge badge-primary text-3xs font-mono">${(this.cachedData.mistakes || []).filter(m => m.examId === editId).length} 題</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button type="button" class="btn-secondary text-2xs py-1 px-2.5 text-primary-blue border-primary-blue/40" onclick="App.openAddMistakeModal(null, { examId: '${editId}', examType: 'quiz', date: '${item.date}', subject: '${item.subject}', unitName: '${item.unitName}' })">
+                    <i data-lucide="plus" class="w-3 h-3 inline mr-0.5"></i>收錄本卷錯題
+                  </button>
+                  ${(this.cachedData.mistakes || []).filter(m => m.examId === editId).length > 0 ? `
+                    <button type="button" class="btn-secondary text-2xs py-1 px-2.5 text-warning border-warning/40" onclick="App.openAIExportModal('${editId}', 'quiz')">
+                      <i data-lucide="sparkles" class="w-3 h-3 inline mr-0.5"></i>AI 診斷本卷
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            ` : ''}
+
             <div class="modal-footer flex items-center justify-end gap-3 pt-3 border-t border-border">
               <button type="button" class="btn-secondary" onclick="App.closeModal()">取消</button>
               <button type="submit" class="btn-primary">儲存小考紀錄</button>
@@ -835,6 +892,27 @@ const App = {
               <label class="form-label">備註與檢討</label>
               <textarea id="term-notes" class="form-input" rows="2" placeholder="記錄段考整體表現、時間分配...">${item ? (item.notes || '') : ''}</textarea>
             </div>
+
+            <!-- 本段考錯題收錄與 AI 深度診斷快捷入口 -->
+            ${isEdit ? `
+              <div class="p-3 rounded-lg bg-surface/70 border border-border flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="book-open" class="w-4 h-4 text-rose-400"></i>
+                  <span class="text-xs font-bold text-primary">本次段考收錄錯題：</span>
+                  <span class="badge badge-primary text-3xs font-mono">${(this.cachedData.mistakes || []).filter(m => m.examId === editId).length} 題</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button type="button" class="btn-secondary text-2xs py-1 px-2.5 text-primary-blue border-primary-blue/40" onclick="App.openAddMistakeModal(null, { examId: '${editId}', examType: 'term', date: '${item.date}', title: '${item.termName}' })">
+                    <i data-lucide="plus" class="w-3.5 h-3.5 inline mr-0.5"></i>收錄本卷錯題
+                  </button>
+                  ${(this.cachedData.mistakes || []).filter(m => m.examId === editId).length > 0 ? `
+                    <button type="button" class="btn-secondary text-2xs py-1 px-2.5 text-warning border-warning/40" onclick="App.openAIExportModal('${editId}', 'term')">
+                      <i data-lucide="sparkles" class="w-3.5 h-3.5 inline mr-0.5"></i>AI 診斷本卷
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            ` : ''}
 
             <div class="modal-footer flex items-center justify-end gap-3 pt-3 border-t border-border">
               <button type="button" class="btn-secondary" onclick="App.closeModal()">取消</button>
@@ -1912,6 +1990,331 @@ const App = {
     } catch (err) {
       this.showToast(`切換失敗: ${err.message}`, 'error');
     }
+  },
+
+  // ==========================================
+  // 全考種錯題收錄與 AI 深度診斷模組 (Universal Mistake Bank & AI Export)
+  // ==========================================
+
+  /**
+   * 開啟收錄/編輯錯題彈窗
+   */
+  openAddMistakeModal(editId = null, presetData = null) {
+    const isEdit = Boolean(editId);
+    const item = isEdit ? this.cachedData.mistakes.find(m => m.id === editId) : presetData;
+    const selectedTags = (item && item.errorTags) || [];
+    const currentMastery = (item && item.masteryLevel) ? Number(item.masteryLevel) : 1;
+    const currentExamType = (item && item.examType) || 'quiz';
+    const currentQuestionType = (item && item.questionType) || 'concept';
+    const currentSubject = (item && item.subject) || 'CHINESE';
+
+    const modalHtml = `
+      <div class="modal-backdrop" onclick="App.closeModal(event)">
+        <div class="modal-card modal-lg" onclick="event.stopPropagation()">
+          <div class="modal-header flex items-center justify-between pb-3 border-b border-border">
+            <div class="flex items-center gap-2">
+              <i data-lucide="book-open" class="w-5 h-5 text-rose-400"></i>
+              <h3 class="font-bold text-base text-primary">${isEdit ? '編輯錯題與盲點分析' : '收錄錯題與觀念盲點'}</h3>
+            </div>
+            <button class="btn-icon" onclick="App.closeModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+
+          <form id="form-mistake" onsubmit="App.handleMistakeFormSubmit(event, '${editId || ''}')" class="modal-body py-4 space-y-4 max-h-[78vh] overflow-y-auto">
+            
+            <!-- 考種、科目與測驗日期 -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="form-label">測驗日期 *</label>
+                <input type="date" id="mk-date" required class="form-input" value="${item ? (item.date || new Date().toISOString().slice(0, 10)) : new Date().toISOString().slice(0, 10)}" />
+              </div>
+              <div>
+                <label class="form-label">學科領域 (考科) *</label>
+                <select id="mk-subject" class="form-input" required>
+                  ${CONSTANTS.SUBJECTS.map(s => `<option value="${s.id}" ${currentSubject === s.id ? 'selected' : ''}>${s.name} (${s.group})</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="form-label">考試來源 / 考種 *</label>
+                <select id="mk-exam-type" class="form-input">
+                  ${CONSTANTS.EXAM_TYPES.map(e => `<option value="${e.id}" ${currentExamType === e.id ? 'selected' : ''}>${e.name}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <!-- 單元名稱與題型 -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div class="sm:col-span-2">
+                <label class="form-label">單元 / 章節 / 知識點名稱 *</label>
+                <input type="text" id="mk-unit-name" required class="form-input" value="${item ? (item.unitName || '') : ''}" placeholder="例如：第 3 章 浮力與沉浮條件、二次函數極值判斷、文言文判讀" />
+              </div>
+              <div>
+                <label class="form-label">題目類型 *</label>
+                <select id="mk-question-type" class="form-input">
+                  ${CONSTANTS.QUESTION_TYPES.map(t => `<option value="${t.id}" ${currentQuestionType === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <!-- 題號 / 標題 -->
+            <div>
+              <label class="form-label">題號或題目摘要 *</label>
+              <input type="text" id="mk-title" required class="form-input" value="${item ? (item.title || '') : ''}" placeholder="例如：第 18 題 - 鹽水浮雞蛋實驗、第 24 題 - 雙曲線圖表判讀" />
+            </div>
+
+            <!-- 題目完整內容 / 題幹描述 -->
+            <div>
+              <label class="form-label">題目內容 / 題幹描述 (供 AI 深度診斷與變形題出題)</label>
+              <textarea id="mk-question-text" class="form-input font-sans text-xs leading-relaxed" rows="3" placeholder="請將題目描述貼上（含關鍵數據、選項或圖表描述，越詳細 AI 分析與出題越精準）...">${item ? (item.questionText || '') : ''}</textarea>
+            </div>
+
+            <!-- 學生錯誤思路 vs 正確解法 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="form-label text-rose-400">❌ 當時作答 / 錯誤思路障礙</label>
+                <textarea id="mk-student-answer" class="form-input border-rose-500/30 focus:border-rose-500 text-xs" rows="2" placeholder="當時選了什麼？思考卡在哪裡？例如：選了 B，誤以為物體下沉時浮力等於重力">${item ? (item.studentAnswer || '') : ''}</textarea>
+              </div>
+              <div>
+                <label class="form-label text-emerald-400">✅ 標準答案與正確解法</label>
+                <textarea id="mk-correct-answer" class="form-input border-emerald-500/30 focus:border-emerald-500 text-xs" rows="2" placeholder="標準答案為 D。物體沉底時 F浮 < W，且浮力等於排開液重...">${item ? (item.correctAnswer || '') : ''}</textarea>
+              </div>
+            </div>
+
+            <!-- 錯題歸因標籤多選 -->
+            <div>
+              <label class="form-label">錯題根本歸因標籤 (可複選)</label>
+              <div class="flex flex-wrap gap-1.5 p-2 rounded bg-surface border border-border">
+                ${CONSTANTS.ERROR_TAGS.map(t => {
+                  const isChecked = selectedTags.includes(t.id);
+                  return `
+                    <label class="inline-flex items-center gap-1 text-2xs px-2.5 py-1 rounded cursor-pointer transition-colors ${isChecked ? 'bg-primary-blue text-white font-bold' : 'bg-card text-muted hover:text-primary'}">
+                      <input type="checkbox" name="mk-error-tags" value="${t.id}" ${isChecked ? 'checked' : ''} class="hidden" onchange="this.parentElement.classList.toggle('bg-primary-blue', this.checked); this.parentElement.classList.toggle('text-white', this.checked); this.parentElement.classList.toggle('font-bold', this.checked); this.parentElement.classList.toggle('bg-card', !this.checked); this.parentElement.classList.toggle('text-muted', !this.checked);" />
+                      <span>${t.name}</span>
+                    </label>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            <!-- 掌握度等級與艾賓浩斯排程 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg bg-surface/50 border border-border">
+              <div>
+                <label class="form-label font-bold">精通掌握度等級</label>
+                <div class="flex items-center gap-2 mt-1">
+                  ${CONSTANTS.MASTERY_LEVELS.map(l => `
+                    <label class="flex-1 text-center py-1.5 px-2 rounded-lg border text-2xs font-bold cursor-pointer transition-all ${currentMastery === l.level ? 'bg-primary-blue/20 border-primary-blue text-primary-blue' : 'border-border text-muted hover:border-primary-blue/40'}" onclick="document.querySelectorAll('.mastery-opt').forEach(el=>el.classList.remove('bg-primary-blue/20','border-primary-blue','text-primary-blue')); this.classList.add('bg-primary-blue/20','border-primary-blue','text-primary-blue');">
+                      <input type="radio" name="mk-mastery" value="${l.level}" ${currentMastery === l.level ? 'checked' : ''} class="hidden mastery-opt-radio" />
+                      <div class="mastery-opt">${l.badge}</div>
+                    </label>
+                  `).join('')}
+                </div>
+              </div>
+
+              <div>
+                <label class="form-label font-bold text-warning flex items-center gap-1">
+                  <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
+                  <span>💡 核心觀念盲點 (考前複習精華)</span>
+                </label>
+                <input type="text" id="mk-blindspot" class="form-input border-warning/40 text-xs" value="${item ? (item.blindspot || '') : ''}" placeholder="例如：沉浮條件判斷先看密度，浮力計算先看排開液體積！" />
+              </div>
+            </div>
+
+            <!-- 隱藏關聯 ID -->
+            <input type="hidden" id="mk-exam-id" value="${(item && item.examId) || ''}" />
+
+            <div class="modal-footer flex items-center justify-between pt-3 border-t border-border">
+              <button type="button" class="btn-secondary text-xs" onclick="App.closeModal()">取消</button>
+              <div class="flex items-center gap-2">
+                ${isEdit ? `
+                  <button type="button" class="btn-secondary text-xs text-primary-blue border-primary-blue/40" onclick="ExportImport.copyAIPromptToClipboard([BitableGallery.getMistakeById('${editId}')])">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5 inline mr-1"></i>複製 AI Prompt
+                  </button>
+                ` : ''}
+                <button type="submit" class="btn-primary text-xs px-4">儲存錯題與盲點</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    this.renderModal(modalHtml);
+  },
+
+  /**
+   * 處理錯題表單提交
+   */
+  async handleMistakeFormSubmit(e, editId) {
+    e.preventDefault();
+
+    const checkedTags = Array.from(document.querySelectorAll('input[name="mk-error-tags"]:checked')).map(cb => cb.value);
+    const masteryRadio = document.querySelector('input[name="mk-mastery"]:checked');
+    const masteryLevel = masteryRadio ? Number(masteryRadio.value) : 1;
+
+    // 計算下次複習日期 (艾賓浩斯間隔)
+    const reviewIntervalDays = masteryLevel === 3 ? 15 : (masteryLevel === 2 ? 3 : 1);
+    const nextDate = new Date();
+    nextDate.setDate(nextDate.getDate() + reviewIntervalDays);
+    const nextReviewDateStr = nextDate.toISOString().slice(0, 10);
+
+    const mistakeItem = {
+      id: editId || `mk_${Date.now()}`,
+      examId: document.getElementById('mk-exam-id')?.value || '',
+      examType: document.getElementById('mk-exam-type').value,
+      date: document.getElementById('mk-date').value,
+      subject: document.getElementById('mk-subject').value,
+      unitName: document.getElementById('mk-unit-name').value.trim(),
+      questionType: document.getElementById('mk-question-type').value,
+      title: document.getElementById('mk-title').value.trim(),
+      questionText: document.getElementById('mk-question-text').value.trim(),
+      studentAnswer: document.getElementById('mk-student-answer').value.trim(),
+      correctAnswer: document.getElementById('mk-correct-answer').value.trim(),
+      errorTags: checkedTags,
+      masteryLevel: masteryLevel,
+      blindspot: document.getElementById('mk-blindspot')?.value.trim() || '',
+      nextReviewDate: nextReviewDateStr,
+      createdAt: editId ? (this.cachedData.mistakes.find(m => m.id === editId)?.createdAt || new Date().toISOString()) : new Date().toISOString()
+    };
+
+    await DB.put('mistakes', mistakeItem);
+    await this.loadAllData();
+    this.refreshCurrentView();
+    this.closeModal();
+    this.showToast('🎉 錯題與盲點已成功收錄至錯題庫！', 'success');
+    this.triggerBackgroundSyncPush();
+  },
+
+  /**
+   * 刪除錯題
+   */
+  async deleteMistake(id) {
+    if (!id) return;
+    if (confirm('確定要從錯題庫中移除此道錯題紀錄嗎？')) {
+      await DB.delete('mistakes', id);
+      await this.loadAllData();
+      this.refreshCurrentView();
+      this.showToast('錯題已刪除', 'info');
+      this.triggerBackgroundSyncPush();
+    }
+  },
+
+  /**
+   * 點擊循環切換掌握度 (🔴 ➔ 🟡 ➔ 🟢)
+   */
+  async toggleMistakeMastery(id) {
+    const item = this.cachedData.mistakes.find(m => m.id === id);
+    if (!item) return;
+
+    let nextLevel = (Number(item.masteryLevel) || 1) + 1;
+    if (nextLevel > 3) nextLevel = 1;
+    item.masteryLevel = nextLevel;
+
+    // 更新下次複習日期
+    const reviewIntervalDays = nextLevel === 3 ? 15 : (nextLevel === 2 ? 3 : 1);
+    const nextDate = new Date();
+    nextDate.setDate(nextDate.getDate() + reviewIntervalDays);
+    item.nextReviewDate = nextDate.toISOString().slice(0, 10);
+
+    await DB.put('mistakes', item);
+    await this.loadAllData();
+    this.refreshCurrentView();
+    
+    const masteryObj = CONSTANTS.MASTERY_LEVELS.find(l => l.level === nextLevel);
+    this.showToast(`掌握度已切換為：${masteryObj.badge}`, 'success');
+    this.triggerBackgroundSyncPush();
+  },
+
+  /**
+   * 開啟 AI 深度診斷與變形題出題 Prompt 匯出彈窗
+   */
+  openAIExportModal(examId = null, examType = null) {
+    let mistakes = [];
+    let title = '全考種精選錯題 AI 深度診斷';
+
+    if (examId) {
+      mistakes = this.cachedData.mistakes.filter(m => m.examId === examId);
+      const examTitle = (examType === 'mock' ? this.cachedData.mockExams.find(m => m.id === examId)?.title : (examType === 'term' ? this.cachedData.termExams.find(t => t.id === examId)?.examName : this.cachedData.quizzes.find(q => q.id === examId)?.unitName)) || '本次測驗';
+      title = `${examTitle} 錯題 AI 深度診斷`;
+    } else {
+      mistakes = BitableGallery.getCurrentFilteredMistakes();
+      if (mistakes.length === 0) {
+        mistakes = this.cachedData.mistakes;
+      }
+    }
+
+    if (mistakes.length === 0) {
+      this.showToast('目前尚無錯題紀錄可供 AI 分析，請先收錄錯題！', 'warning');
+      return;
+    }
+
+    const previewPrompt = ExportImport.generateAIMistakePrompt(mistakes, { title });
+
+    const modalHtml = `
+      <div class="modal-backdrop" onclick="App.closeModal(event)">
+        <div class="modal-card modal-lg" onclick="event.stopPropagation()">
+          <div class="modal-header flex items-center justify-between pb-3 border-b border-border">
+            <div class="flex items-center gap-2">
+              <i data-lucide="sparkles" class="w-5 h-5 text-primary-blue"></i>
+              <div>
+                <h3 class="font-bold text-base text-primary">🤖 AI 深度診斷 & 變形題出題中心</h3>
+                <p class="text-3xs text-muted">一鍵將錯題轉換為針對 ChatGPT / Claude / Gemini 最優化之名師診斷提示詞</p>
+              </div>
+            </div>
+            <button class="btn-icon" onclick="App.closeModal()"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+
+          <div class="modal-body py-4 space-y-4 max-h-[75vh] overflow-y-auto">
+            <!-- 資訊橫幅 -->
+            <div class="p-3 rounded-lg bg-primary-blue/10 border border-primary-blue/30 flex items-start gap-2.5">
+              <i data-lucide="bot" class="w-5 h-5 text-primary-blue shrink-0 mt-0.5"></i>
+              <div class="text-xs space-y-1">
+                <div class="font-bold text-primary">已為您打包 ${mistakes.length} 道錯題的完整結構化數據！</div>
+                <div class="text-secondary text-2xs leading-relaxed">
+                  點擊下方「<b>複製 AI Prompt</b>」後，直接貼至 <b>ChatGPT / Claude / Gemini / DeepSeek</b>，AI 名師將立即為您輸出：
+                  <span class="text-primary-blue font-semibold">① 底層思維盲點診斷</span>、
+                  <span class="text-primary-blue font-semibold">② 關鍵破題金鑰</span>、
+                  <span class="text-primary-blue font-semibold">③ 3天黃金搶分複習清單</span>、
+                  <span class="text-primary-blue font-semibold">④ 3~5 題同概念高仿會考變形題</span>。
+                </div>
+              </div>
+            </div>
+
+            <!-- Prompt 即時預覽區 -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="form-label text-xs font-bold text-secondary">AI Prompt 提示詞預覽 (Markdown 格式)：</label>
+                <span class="text-3xs text-muted font-mono">${previewPrompt.length} 字元</span>
+              </div>
+              <textarea readonly class="form-input font-mono text-2xs text-secondary bg-surface/90 border-border/80 leading-relaxed cursor-text select-all" rows="10">${previewPrompt}</textarea>
+            </div>
+
+            <!-- 實戰操作按鈕群組 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-2">
+              <button type="button" class="btn-primary text-xs py-2.5 flex items-center justify-center gap-1.5 font-bold shadow-md" onclick="ExportImport.copyAIPromptToClipboard(BitableGallery.getCurrentFilteredMistakes(), { title: '${title}' })">
+                <i data-lucide="copy" class="w-4 h-4"></i>
+                <span>一鍵複製 Prompt</span>
+              </button>
+
+              <button type="button" class="btn-secondary text-xs py-2.5 flex items-center justify-center gap-1.5" onclick="ExportImport.downloadAIMarkdown(BitableGallery.getCurrentFilteredMistakes(), { title: '${title}' })">
+                <i data-lucide="download" class="w-4 h-4"></i>
+                <span>下載 .md 檔案</span>
+              </button>
+
+              <button type="button" class="btn-secondary text-xs py-2.5 flex items-center justify-center gap-1.5 text-warning border-warning/40" onclick="ExportImport.printMistakeSheet(BitableGallery.getCurrentFilteredMistakes(), { includeAnswers: false, title: '考前專屬「盲點消滅」二次實戰重測卷' })">
+                <i data-lucide="printer" class="w-4 h-4"></i>
+                <span>印考前空白重刷卷</span>
+              </button>
+
+              <button type="button" class="btn-secondary text-xs py-2.5 flex items-center justify-center gap-1.5 text-secondary" onclick="ExportImport.printMistakeSheet(BitableGallery.getCurrentFilteredMistakes(), { includeAnswers: true, title: '學業評量錯題深度解析與盲點診斷書' })">
+                <i data-lucide="file-text" class="w-4 h-4"></i>
+                <span>印含詳解診斷書</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.renderModal(modalHtml);
   },
 
   // PWA 安裝觸發

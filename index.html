@@ -46,7 +46,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- 客製化深色精緻介面樣式 -->
-  <link rel="stylesheet" href="./css/styles.css?v=15" />
+  <link rel="stylesheet" href="./css/styles.css?v=16" />
 </head>
 <body class="bg-[#0B0D11] text-[#F3F4F6]">
 
@@ -85,6 +85,12 @@
             <div id="header-school-info" class="text-3xs text-muted font-mono">littletiger0815@gmail.com</div>
           </div>
         </div>
+
+        <!-- AI 深度診斷與變形題中心 (桌面快速入口) -->
+        <button class="btn-secondary text-xs hidden md:inline-flex text-primary-blue border-primary-blue/40 hover:bg-primary-blue/10" title="AI 名師錯題診斷與會考變形題出題" onclick="App.openAIExportModal()">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5 inline mr-1"></i>
+          <span>AI 診斷</span>
+        </button>
 
         <!-- 列印 / 匯出 PDF 診斷書 (桌面專用) -->
         <button class="btn-secondary text-xs hidden md:inline-flex" title="列印 / 產生會考診斷報告書" onclick="ExportImport.printDiagnosticReport()">
@@ -146,7 +152,7 @@
           </button>
           <button class="view-tab-btn" data-view="gallery" onclick="App.switchView('gallery')">
             <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
-            <span>錯題筆記畫廊</span>
+            <span>錯題本 & AI診斷</span>
           </button>
         </div>
       </div>
@@ -182,7 +188,7 @@
       </button>
       <button class="mobile-nav-btn" data-view="gallery" onclick="App.switchView('gallery')">
         <i data-lucide="book-open" class="w-5 h-5"></i>
-        <span>錯題</span>
+        <span>錯題本</span>
       </button>
     </nav>
 
@@ -195,18 +201,18 @@
   <div id="toast-container"></div>
 
   <!-- 核心腳本載入順序 (含版本防快取) -->
-  <script src="./js/constants.js?v=15"></script>
-  <script src="./js/auth.js?v=15"></script>
-  <script src="./js/scoring.js?v=15"></script>
-  <script src="./js/db.js?v=15"></script>
-  <script src="./js/charts.js?v=15"></script>
-  <script src="./js/views/bitable-grid.js?v=15"></script>
-  <script src="./js/views/bitable-kanban.js?v=15"></script>
-  <script src="./js/views/bitable-dashboard.js?v=15"></script>
-  <script src="./js/views/bitable-gallery.js?v=15"></script>
-  <script src="./js/gas-sync.js?v=15"></script>
-  <script src="./js/export-import.js?v=15"></script>
-  <script src="./js/app.js?v=15"></script>
+  <script src="./js/constants.js?v=16"></script>
+  <script src="./js/auth.js?v=16"></script>
+  <script src="./js/scoring.js?v=16"></script>
+  <script src="./js/db.js?v=16"></script>
+  <script src="./js/charts.js?v=16"></script>
+  <script src="./js/views/bitable-grid.js?v=16"></script>
+  <script src="./js/views/bitable-kanban.js?v=16"></script>
+  <script src="./js/views/bitable-dashboard.js?v=16"></script>
+  <script src="./js/views/bitable-gallery.js?v=16"></script>
+  <script src="./js/gas-sync.js?v=16"></script>
+  <script src="./js/export-import.js?v=16"></script>
+  <script src="./js/app.js?v=16"></script>
 
 </body>
 </html>

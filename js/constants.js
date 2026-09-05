@@ -90,6 +90,32 @@ const CONSTANTS = {
     { id: 'unfamiliar_vocabulary', name: '單字文法盲區', color: '#10B981' }
   ],
 
+  // 錯題題目類型 (題型分類)
+  QUESTION_TYPES: [
+    { id: 'concept', name: '觀念概念題', icon: 'lightbulb', color: '#3B82F6' },
+    { id: 'calculation', name: '計算推演題', icon: 'calculator', color: '#EC4899' },
+    { id: 'diagram', name: '圖表判讀題', icon: 'pie-chart', color: '#10B981' },
+    { id: 'reading', name: '素養閱讀題', icon: 'file-text', color: '#8B5CF6' },
+    { id: 'experiment', name: '實驗探究題', icon: 'flask-conical', color: '#F59E0B' },
+    { id: 'group_set', name: '跨科/題組題', icon: 'layers', color: '#6366F1' },
+    { id: 'trap_detail', name: '陷阱細節題', icon: 'alert-triangle', color: '#EF4444' }
+  ],
+
+  // 錯題精通掌握度等級 (Mastery Levels)
+  MASTERY_LEVELS: [
+    { id: 'level_1', level: 1, name: '需加強', badge: '🔴 需加強', color: '#EF4444', reviewDays: 1, desc: '剛錯/尚未真正弄懂' },
+    { id: 'level_2', level: 2, name: '複習中', badge: '🟡 複習中', color: '#F59E0B', reviewDays: 3, desc: '已看過詳解，需再次驗證' },
+    { id: 'level_3', level: 3, name: '已精通', badge: '🟢 已精通', color: '#10B981', reviewDays: 15, desc: '能自主解出且能向他人講解' }
+  ],
+
+  // 考試類別 (Exam Source)
+  EXAM_TYPES: [
+    { id: 'mock', name: '會考模擬考', badgeClass: 'badge-primary' },
+    { id: 'term', name: '定期段考', badgeClass: 'badge-success' },
+    { id: 'quiz', name: '小考評量', badgeClass: 'badge-warning' },
+    { id: 'practice', name: '平時刷題/自訂', badgeClass: 'badge-info' }
+  ],
+
   // 小考測驗類型
   QUIZ_TYPES: [
     '隨堂小考', '週考', '單元總結測驗', '章節複習考', '補救測驗', '課後評量'

@@ -80,6 +80,17 @@ const DB = {
           db.createObjectStore('targetSchools', { keyPath: 'id' });
         }
 
+        if (!db.objectStoreNames.contains('mistakes')) {
+          const mistakeStore = db.createObjectStore('mistakes', { keyPath: 'id' });
+          mistakeStore.createIndex('examId', 'examId', { unique: false });
+          mistakeStore.createIndex('examType', 'examType', { unique: false });
+          mistakeStore.createIndex('subject', 'subject', { unique: false });
+          mistakeStore.createIndex('date', 'date', { unique: false });
+          mistakeStore.createIndex('masteryLevel', 'masteryLevel', { unique: false });
+          mistakeStore.createIndex('errorType', 'errorType', { unique: false });
+          mistakeStore.createIndex('nextReviewDate', 'nextReviewDate', { unique: false });
+        }
+
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings', { keyPath: 'id' });
         }
@@ -176,6 +187,7 @@ const DB = {
       localStorage.setItem(`${p}termExams`, JSON.stringify([]));
       localStorage.setItem(`${p}mockExams`, JSON.stringify([]));
       localStorage.setItem(`${p}targetSchools`, JSON.stringify(CONSTANTS.TARGET_SCHOOLS_DB));
+      localStorage.setItem(`${p}mistakes`, JSON.stringify([]));
       localStorage.setItem(`${p}settings`, JSON.stringify(SEED_DATA.settings));
       localStorage.setItem(`${p}INIT`, 'true');
     }
@@ -365,7 +377,7 @@ const DB = {
       return true;
     }
 
-    const stores = ['quizzes', 'termExams', 'mockExams', 'targetSchools', 'settings'];
+    const stores = ['quizzes', 'termExams', 'mockExams', 'targetSchools', 'mistakes', 'settings'];
     const transaction = this.dbInstance.transaction(stores, 'readwrite');
     stores.forEach(s => transaction.objectStore(s).clear());
 
@@ -375,23 +387,25 @@ const DB = {
     return true;
   },
 
-  // 取得完整匯出 JSON
+  // 取得完整匯出 JSON (含全考種錯題本)
   async exportAllData() {
-    const [quizzes, termExams, mockExams, targetSchools, settings] = await Promise.all([
+    const [quizzes, termExams, mockExams, targetSchools, mistakes, settings] = await Promise.all([
       this.getAll('quizzes'),
       this.getAll('termExams'),
       this.getAll('mockExams'),
       this.getAll('targetSchools'),
+      this.getAll('mistakes'),
       this.get('settings', 'main')
     ]);
 
     return {
-      version: '1.0.0',
+      version: '1.1.0',
       exportedAt: new Date().toISOString(),
       quizzes,
       termExams,
       mockExams,
       targetSchools,
+      mistakes: mistakes || [],
       settings: settings || SEED_DATA.settings
     };
   },
@@ -405,12 +419,14 @@ const DB = {
     const incomingMocks = Array.isArray(payload.mockExams) ? payload.mockExams : [];
     const incomingQuizzes = Array.isArray(payload.quizzes) ? payload.quizzes : [];
     const incomingTerms = Array.isArray(payload.termExams) ? payload.termExams : [];
-    const totalIncoming = incomingMocks.length + incomingQuizzes.length + incomingTerms.length;
+    const incomingMistakes = Array.isArray(payload.mistakes) ? payload.mistakes : [];
+    const totalIncoming = incomingMocks.length + incomingQuizzes.length + incomingTerms.length + incomingMistakes.length;
 
     const curMocks = await this.getAll('mockExams');
     const curQuizzes = await this.getAll('quizzes');
     const curTerms = await this.getAll('termExams');
-    const totalLocal = curMocks.length + curQuizzes.length + curTerms.length;
+    const curMistakes = await this.getAll('mistakes');
+    const totalLocal = curMocks.length + curQuizzes.length + curTerms.length + curMistakes.length;
 
     // 若雲端為空 (0筆) 但本地有成績，不要清空本地，保留現存紀錄
     if (totalIncoming === 0 && totalLocal > 0) {
@@ -484,12 +500,23 @@ const DB = {
     }
     const mergedSchools = Array.from(schoolMap.values());
 
+    // 5. 智慧合併錯題庫 (Merge Mistakes by ID)
+    const mistakeMap = new Map();
+    curMistakes.forEach(m => { if (m && m.id) mistakeMap.set(String(m.id), m); });
+    incomingMistakes.forEach(m => {
+      if (m && m.id) {
+        mistakeMap.set(String(m.id), { ...(mistakeMap.get(String(m.id)) || {}), ...m });
+      }
+    });
+    const mergedMistakes = Array.from(mistakeMap.values());
+
     // 寫入儲存
     if (this.useLocalStorage) {
       const p = this.getStoragePrefix();
       localStorage.setItem(`${p}quizzes`, JSON.stringify(mergedQuizzes));
       localStorage.setItem(`${p}termExams`, JSON.stringify(mergedTerms));
       localStorage.setItem(`${p}mockExams`, JSON.stringify(mergedMocks));
+      localStorage.setItem(`${p}mistakes`, JSON.stringify(mergedMistakes));
       if (mergedSchools.length > 0) localStorage.setItem(`${p}targetSchools`, JSON.stringify(mergedSchools));
       if (payload.settings) {
         const curSettings = JSON.parse(localStorage.getItem(`${p}settings`) || '{}');
@@ -508,6 +535,9 @@ const DB = {
 
     await this.clear('mockExams');
     if (mergedMocks.length > 0) await this.bulkPut('mockExams', mergedMocks);
+
+    await this.clear('mistakes');
+    if (mergedMistakes.length > 0) await this.bulkPut('mistakes', mergedMistakes);
 
     if (mergedSchools.length > 0) {
       await this.clear('targetSchools');
