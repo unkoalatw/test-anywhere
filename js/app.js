@@ -1258,9 +1258,15 @@ const App = {
                 <span class="badge-success text-2xs">已支援 CORS 規避</span>
               </div>
               
-              <p class="text-2xs text-muted">
-                請輸入已部署為 Web 應用程式的 Apps Script 網址（部署權限請設為「任何人 (Anyone)」）。
-              </p>
+              <div class="text-2xs text-muted space-y-1 bg-card/60 p-2.5 rounded border border-border/50">
+                <p>💡 <b>部署重要指引 (避免 CORS 阻擋)：</b></p>
+                <ol class="list-decimal list-inside space-y-0.5 text-secondary pl-1">
+                  <li>建立 Google 試算表 ➔ 點擊【擴充功能】➔【Apps Script】。</li>
+                  <li>將 <code class="text-primary-blue">Code.gs</code> 內容完整貼上並儲存。</li>
+                  <li>點擊右上角【部署】➔【新增部署作業】（或【管理部署作業】編輯）。</li>
+                  <li>類型選【網頁應用程式】，將<b>「誰可以存取 (Who has access)」務必選為「所有人 (Anyone)」</b>，並複製網址貼至下方。</li>
+                </ol>
+              </div>
 
               <div>
                 <label class="form-label">GAS Web App 網址 (URL)</label>

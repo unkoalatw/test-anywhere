@@ -246,7 +246,7 @@ const SEED_DATA = {
     schoolName: '',
     gradeClass: '',
     targetSchools: ['sch_1', 'sch_2', 'sch_3'],
-    gasUrl: 'https://script.google.com/macros/s/AKfycbyrffuoxnvgVP1kAhNtxv_t7-hiLscXsN5jECMCRwi3-Olw_WlN-UvEPr0ceQAHEQ89/exec',
+    gasUrl: '',
     gasSyncEnabled: true,
     autoSyncInterval: 0,
     theme: 'dark'
