@@ -110,19 +110,31 @@ const DB = {
       localStorage.setItem('CAP_quizzes', JSON.stringify([]));
       localStorage.setItem('CAP_termExams', JSON.stringify([]));
       localStorage.setItem('CAP_mockExams', JSON.stringify([]));
+      localStorage.setItem('CAP_mistakes', JSON.stringify([]));
       localStorage.setItem('CAP_targetSchools', JSON.stringify(CONSTANTS.TARGET_SCHOOLS_DB));
       localStorage.setItem('CAP_settings', JSON.stringify(SEED_DATA.settings));
       localStorage.setItem('CAP_TRACKER_INIT', 'true');
+    } else {
+      const curSet = JSON.parse(localStorage.getItem('CAP_settings') || '{}');
+      if (curSet.gasUrl && curSet.gasUrl.includes('AKfycbyrffuoxnvgVP1kAhNtxv_t7-hiLscXsN5jECMCRwi3-Olw_WlN-UvEPr0ceQAHEQ89')) {
+        curSet.gasUrl = SEED_DATA.settings.gasUrl;
+        localStorage.setItem('CAP_settings', JSON.stringify(curSet));
+      }
     }
   },
 
-  // 檢查並建立初始乾淨設定 (不填入任何假資料)
+  // 檢查並建立初始乾淨設定 (不填入任何假資料，並自動遷移舊無效 GAS 網址)
   async checkAndSeedDefaultData() {
     if (this.useLocalStorage) return;
 
-    const settings = await this.get('settings', 'main');
+    let settings = await this.get('settings', 'main');
     if (!settings) {
       await this.put('settings', { id: 'main', ...SEED_DATA.settings });
+    } else if (settings.gasUrl && settings.gasUrl.includes('AKfycbyrffuoxnvgVP1kAhNtxv_t7-hiLscXsN5jECMCRwi3-Olw_WlN-UvEPr0ceQAHEQ89')) {
+      // 自動升級修復瀏覽器快取中殘留的舊失效 GAS 網址
+      settings.gasUrl = SEED_DATA.settings.gasUrl;
+      await this.put('settings', settings);
+      console.log('Migrated legacy 404 GAS URL to current active deployment URL.');
     }
 
     const targetCount = await this.count('targetSchools');

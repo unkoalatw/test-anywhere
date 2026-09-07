@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cap-score-tracker-v19';
+const CACHE_NAME = 'cap-score-tracker-v20';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
