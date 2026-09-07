@@ -431,6 +431,11 @@ const App = {
             </div>
 
             <!-- 策略備註 -->
+            <div>
+              <label class="form-label">策略備註與心得</label>
+              <textarea id="mock-notes" class="form-input" rows="2" placeholder="記錄本次模考時間分配、答題順序策略...">${item ? (item.notes || '') : ''}</textarea>
+            </div>
+
             <!-- 本卷錯題收錄快捷入口 -->
             ${isEdit ? `
               <div class="p-3 rounded-lg bg-surface/70 border border-border flex items-center justify-between gap-2">
@@ -551,29 +556,29 @@ const App = {
       return activeBtn ? activeBtn.dataset.notation : 'B';
     };
 
-    const rCor = document.getElementById('mock-en-reading').value;
-    const lCor = document.getElementById('mock-en-listening').value;
+    const rCor = document.getElementById('mock-en-reading')?.value;
+    const lCor = document.getElementById('mock-en-listening')?.value;
     const enWScore = ScoringEngine.calcEnglishWeightedScore(
       rCor ? Number(rCor) : null, 43, lCor ? Number(lCor) : null, 21
     );
 
-    const cCor = document.getElementById('mock-ma-choice').value;
-    const ncScore = document.getElementById('mock-ma-nonchoice').value;
+    const cCor = document.getElementById('mock-ma-choice')?.value;
+    const ncScore = document.getElementById('mock-ma-nonchoice')?.value;
     const maWScore = ScoringEngine.calcMathWeightedScore(
       cCor ? Number(cCor) : null, 25, ncScore ? Number(ncScore) : null, 6
     );
 
-    const chCor = document.getElementById('mock-ch-correct').value;
-    const soCor = document.getElementById('mock-so-correct').value;
-    const scCor = document.getElementById('mock-sc-correct').value;
+    const chCor = document.getElementById('mock-ch-correct')?.value;
+    const soCor = document.getElementById('mock-so-correct')?.value;
+    const scCor = document.getElementById('mock-sc-correct')?.value;
 
     const mockItem = {
       id: editId || `me_${Date.now()}`,
-      title: document.getElementById('mock-title').value,
-      date: document.getElementById('mock-date').value,
-      organizer: document.getElementById('mock-organizer').value,
-      scope: document.getElementById('mock-scope').value,
-      district: document.getElementById('mock-district').value,
+      title: document.getElementById('mock-title')?.value || '模擬考評量',
+      date: document.getElementById('mock-date')?.value || new Date().toISOString().slice(0, 10),
+      organizer: document.getElementById('mock-organizer')?.value || '模擬考',
+      scope: document.getElementById('mock-scope')?.value || '全範圍',
+      district: document.getElementById('mock-district')?.value || 'KEELUNG_TAIPEI',
       blindspot: document.getElementById('mock-blindspot')?.value || '',
       subjects: {
         CHINESE: { notation: getSubNotation('CHINESE'), rawCorrect: chCor ? Number(chCor) : undefined },
@@ -581,9 +586,9 @@ const App = {
         MATH: { notation: getSubNotation('MATH'), choiceCorrect: cCor ? Number(cCor) : undefined, nonChoiceScore: ncScore ? Number(ncScore) : undefined, weightedScore: maWScore },
         SOCIAL: { notation: getSubNotation('SOCIAL'), rawCorrect: soCor ? Number(soCor) : undefined },
         SCIENCE: { notation: getSubNotation('SCIENCE'), rawCorrect: scCor ? Number(scCor) : undefined },
-        WRITING: { grade: Number(document.getElementById('mock-writing-grade').value || 5) }
+        WRITING: { grade: Number(document.getElementById('mock-writing-grade')?.value || 5) }
       },
-      notes: document.getElementById('mock-notes').value
+      notes: document.getElementById('mock-notes')?.value || ''
     };
 
     await DB.put('mockExams', mockItem);
@@ -727,16 +732,16 @@ const App = {
 
     const item = {
       id: editId || `qz_${Date.now()}`,
-      date: document.getElementById('quiz-date').value,
-      subject: document.getElementById('quiz-subject').value,
-      unitName: document.getElementById('quiz-unit').value,
-      quizType: document.getElementById('quiz-type').value,
-      score: Number(document.getElementById('quiz-score').value),
-      maxScore: Number(document.getElementById('quiz-max-score').value || 100),
+      date: document.getElementById('quiz-date')?.value || new Date().toISOString().slice(0, 10),
+      subject: document.getElementById('quiz-subject')?.value || 'CHINESE',
+      unitName: document.getElementById('quiz-unit')?.value || '單元測驗',
+      quizType: document.getElementById('quiz-type')?.value || '隨堂測驗',
+      score: Number(document.getElementById('quiz-score')?.value || 0),
+      maxScore: Number(document.getElementById('quiz-max-score')?.value || 100),
       errorTags: tags,
       blindspot: document.getElementById('quiz-blindspot')?.value || '',
-      correctionStatus: document.getElementById('quiz-correction-status').value,
-      notes: document.getElementById('quiz-notes').value
+      correctionStatus: document.getElementById('quiz-correction-status')?.value || 'corrected',
+      notes: document.getElementById('quiz-notes')?.value || ''
     };
 
     await DB.put('quizzes', item);
@@ -902,18 +907,18 @@ const App = {
     });
 
     const averageScore = validCount > 0 ? Math.round((totalScore / validCount) * 100) / 100 : 0;
-    const rankVal = document.getElementById('term-class-rank').value;
+    const rankVal = document.getElementById('term-class-rank')?.value;
 
     const item = {
       id: editId || `te_${Date.now()}`,
-      termName: document.getElementById('term-name').value,
-      date: document.getElementById('term-date').value,
+      termName: document.getElementById('term-name')?.value || '定期段考',
+      date: document.getElementById('term-date')?.value || new Date().toISOString().slice(0, 10),
       classRank: rankVal ? Number(rankVal) : null,
       totalScore,
       averageScore,
       subjects,
       blindspot: document.getElementById('term-blindspot')?.value || '',
-      notes: document.getElementById('term-notes').value
+      notes: document.getElementById('term-notes')?.value || ''
     };
 
     await DB.put('termExams', item);
