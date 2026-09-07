@@ -1,7 +1,7 @@
 // 學業成績智慧彙整系統 - 本地資料庫 (IndexedDB / LocalStorage Local-First Engine)
 const DB = {
   dbName: 'CAP_AcademicTracker_DB',
-  dbVersion: 1,
+  dbVersion: 2,
   dbInstance: null,
   listeners: [],
 
@@ -68,6 +68,14 @@ const DB = {
         if (!db.objectStoreNames.contains('mockExams')) {
           const mockStore = db.createObjectStore('mockExams', { keyPath: 'id' });
           mockStore.createIndex('date', 'date', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('mistakes')) {
+          const mistakeStore = db.createObjectStore('mistakes', { keyPath: 'id' });
+          mistakeStore.createIndex('subject', 'subject', { unique: false });
+          mistakeStore.createIndex('date', 'date', { unique: false });
+          mistakeStore.createIndex('masteryLevel', 'masteryLevel', { unique: false });
+          mistakeStore.createIndex('examId', 'examId', { unique: false });
         }
 
         if (!db.objectStoreNames.contains('targetSchools')) {
@@ -284,7 +292,7 @@ const DB = {
       return true;
     }
 
-    const stores = ['quizzes', 'termExams', 'mockExams', 'targetSchools', 'settings'];
+    const stores = ['quizzes', 'termExams', 'mockExams', 'mistakes', 'targetSchools', 'settings'];
     const transaction = this.dbInstance.transaction(stores, 'readwrite');
     stores.forEach(s => transaction.objectStore(s).clear());
 
@@ -296,21 +304,23 @@ const DB = {
 
   // 取得完整匯出 JSON
   async exportAllData() {
-    const [quizzes, termExams, mockExams, targetSchools, settings] = await Promise.all([
+    const [quizzes, termExams, mockExams, mistakes, targetSchools, settings] = await Promise.all([
       this.getAll('quizzes'),
       this.getAll('termExams'),
       this.getAll('mockExams'),
+      this.getAll('mistakes'),
       this.getAll('targetSchools'),
       this.get('settings', 'main')
     ]);
 
     return {
-      version: '1.0.0',
+      version: '1.2.0',
       exportedAt: new Date().toISOString(),
-      quizzes,
-      termExams,
-      mockExams,
-      targetSchools,
+      quizzes: quizzes || [],
+      termExams: termExams || [],
+      mockExams: mockExams || [],
+      mistakes: mistakes || [],
+      targetSchools: targetSchools || [],
       settings: settings || SEED_DATA.settings
     };
   },
@@ -324,12 +334,14 @@ const DB = {
     const incomingMocks = Array.isArray(payload.mockExams) ? payload.mockExams : [];
     const incomingQuizzes = Array.isArray(payload.quizzes) ? payload.quizzes : [];
     const incomingTerms = Array.isArray(payload.termExams) ? payload.termExams : [];
-    const totalIncoming = incomingMocks.length + incomingQuizzes.length + incomingTerms.length;
+    const incomingMistakes = Array.isArray(payload.mistakes) ? payload.mistakes : [];
+    const totalIncoming = incomingMocks.length + incomingQuizzes.length + incomingTerms.length + incomingMistakes.length;
 
     const curMocks = await this.getAll('mockExams');
     const curQuizzes = await this.getAll('quizzes');
     const curTerms = await this.getAll('termExams');
-    const totalLocal = curMocks.length + curQuizzes.length + curTerms.length;
+    const curMistakes = await this.getAll('mistakes');
+    const totalLocal = curMocks.length + curQuizzes.length + curTerms.length + curMistakes.length;
 
     // 若雲端為空 (0筆) 但本地有成績，不要清空本地，保留現存紀錄
     if (totalIncoming === 0 && totalLocal > 0) {
@@ -392,7 +404,17 @@ const DB = {
     });
     const mergedMocks = Array.from(mockMap.values());
 
-    // 4. 智慧合併目標學校
+    // 4. 智慧合併錯題庫 (Merge Mistakes by ID)
+    const mistakeMap = new Map();
+    curMistakes.forEach(mk => { if (mk && mk.id) mistakeMap.set(String(mk.id), mk); });
+    incomingMistakes.forEach(mk => {
+      if (mk && mk.id) {
+        mistakeMap.set(String(mk.id), { ...(mistakeMap.get(String(mk.id)) || {}), ...mk });
+      }
+    });
+    const mergedMistakes = Array.from(mistakeMap.values());
+
+    // 5. 智慧合併目標學校
     const curSchools = await this.getAll('targetSchools');
     const schoolMap = new Map();
     curSchools.forEach(s => { if (s && s.id) schoolMap.set(String(s.id), s); });
@@ -408,6 +430,7 @@ const DB = {
       localStorage.setItem('CAP_quizzes', JSON.stringify(mergedQuizzes));
       localStorage.setItem('CAP_termExams', JSON.stringify(mergedTerms));
       localStorage.setItem('CAP_mockExams', JSON.stringify(mergedMocks));
+      localStorage.setItem('CAP_mistakes', JSON.stringify(mergedMistakes));
       if (mergedSchools.length > 0) localStorage.setItem('CAP_targetSchools', JSON.stringify(mergedSchools));
       if (payload.settings) {
         const curSettings = JSON.parse(localStorage.getItem('CAP_settings') || '{}');
@@ -426,6 +449,9 @@ const DB = {
 
     await this.clear('mockExams');
     if (mergedMocks.length > 0) await this.bulkPut('mockExams', mergedMocks);
+
+    await this.clear('mistakes');
+    if (mergedMistakes.length > 0) await this.bulkPut('mistakes', mergedMistakes);
 
     if (mergedSchools.length > 0) {
       await this.clear('targetSchools');

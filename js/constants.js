@@ -90,6 +90,24 @@ const CONSTANTS = {
     { id: 'unfamiliar_vocabulary', name: '單字文法盲區', color: '#10B981' }
   ],
 
+  // 錯題題型分類
+  QUESTION_TYPES: [
+    { id: 'single_choice', name: '單一選擇題' },
+    { id: 'reading_comprehension', name: '閱讀題組題' },
+    { id: 'fill_in_blank', name: '填充題' },
+    { id: 'math_non_choice', name: '數學非選計算/證明' },
+    { id: 'short_answer', name: '簡答/申論題' },
+    { id: 'chart_analysis', name: '圖表/實驗分析題' },
+    { id: 'other', name: '其他綜合題型' }
+  ],
+
+  // 錯題掌握度等級 (艾賓浩斯記憶週期)
+  MASTERY_LEVELS: [
+    { level: 1, name: '生疏待加強', badge: '🔴 生疏', color: '#EF4444', intervalDays: 1, desc: '需於 24 小時內重練' },
+    { level: 2, name: '複習掌握中', badge: '🟡 複習中', color: '#F59E0B', intervalDays: 3, desc: '需於 3 天後二次重刷' },
+    { level: 3, name: '已完全熟練', badge: '🟢 已熟練', color: '#10B981', intervalDays: 15, desc: '考前前夕快速巡檢即可' }
+  ],
+
   // 小考測驗類型
   QUIZ_TYPES: [
     '隨堂小考', '週考', '單元總結測驗', '章節複習考', '補救測驗', '課後評量'

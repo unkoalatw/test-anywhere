@@ -3,8 +3,8 @@
  * 
  * 核心功能：
  * 1. 支援無 CORS 阻礙之 REST Web App 通訊 (doGet / doPost)
- * 2. 雙向同步：小考評量、定期段考、會考模擬考、目標高中、系統設定
- * 3. 一鍵自動建立並格式化試算表：專業色系標題列、凍結首列、欄位驗證、自適應欄寬與條件格式化
+ * 2. 雙向同步：小考評量、定期段考、會考模擬考、錯題與盲點筆記、目標高中志願、系統設定
+ * 3. 一鍵自動建立並格式化試算表：專業色系標題列、凍結首列、自適應欄寬與結構化存取
  */
 
 // 處理 GET 請求 (可用於瀏覽器檢測連線或拉取雲端數據)
@@ -56,14 +56,15 @@ function doPost(e) {
       });
     }
     
-    // 2. 完整同步/覆寫數據至試算表
+    // 2. 完整同步/覆寫數據至試算表 (Push)
     if (action === 'syncAll' || action === 'push') {
       var data = payload.data || {};
       autoFormatSpreadsheet(); // 確保工作表與欄位存在
       
-      if (data.quizzes) syncQuizzesSheet(data.quizzes);
-      if (data.termExams) syncTermExamsSheet(data.termExams);
       if (data.mockExams) syncMockExamsSheet(data.mockExams);
+      if (data.termExams) syncTermExamsSheet(data.termExams);
+      if (data.quizzes) syncQuizzesSheet(data.quizzes);
+      if (data.mistakes) syncMistakesSheet(data.mistakes);
       if (data.targetSchools) syncTargetSchoolsSheet(data.targetSchools);
       if (data.settings) syncSettingsSheet(data.settings);
       
@@ -72,14 +73,15 @@ function doPost(e) {
         message: '雲端試算表雙向同步完成！',
         syncedAt: new Date().toISOString(),
         counts: {
-          quizzes: data.quizzes ? data.quizzes.length : 0,
+          mockExams: data.mockExams ? data.mockExams.length : 0,
           termExams: data.termExams ? data.termExams.length : 0,
-          mockExams: data.mockExams ? data.mockExams.length : 0
+          quizzes: data.quizzes ? data.quizzes.length : 0,
+          mistakes: data.mistakes ? data.mistakes.length : 0
         }
       });
     }
     
-    // 3. 單純拉取全部雲端數據
+    // 3. 單純拉取全部雲端數據 (Pull)
     if (action === 'pull') {
       var cloudData = fetchAllSheetsData();
       return createJsonResponse({
@@ -124,16 +126,20 @@ function autoFormatSpreadsheet() {
   var quizSheet = getOrCreateSheet(ss, '小考評量紀錄');
   setupQuizSheetHeader(quizSheet);
   
-  // 4. 格式化「目標高中與志願」
+  // 4. 格式化「錯題與盲點筆記」
+  var mistakeSheet = getOrCreateSheet(ss, '錯題與盲點筆記');
+  setupMistakeSheetHeader(mistakeSheet);
+
+  // 5. 格式化「目標高中與志願」
   var targetSheet = getOrCreateSheet(ss, '目標高中與志願');
   setupTargetSheetHeader(targetSheet);
   
-  // 5. 格式化「系統設定與備份」
+  // 6. 格式化「系統設定與備份」
   var settingSheet = getOrCreateSheet(ss, '系統設定與備份');
   setupSettingSheetHeader(settingSheet);
   
   return {
-    sheets: ['模擬考會考專區', '定期段考評量', '小考評量紀錄', '目標高中與志願', '系統設定與備份'],
+    sheets: ['模擬考會考專區', '定期段考評量', '小考評量紀錄', '錯題與盲點筆記', '目標高中與志願', '系統設定與備份'],
     formattedAt: new Date().toISOString()
   };
 }
@@ -200,7 +206,17 @@ function setupQuizSheetHeader(sheet) {
   applyHeaderStyle(sheet, headers);
 }
 
-// 4. 目標高中欄位定義
+// 4. 錯題與盲點筆記欄位定義
+function setupMistakeSheetHeader(sheet) {
+  var headers = [
+    'ID', '收錄日期', '科目代碼', '科目名稱', '章節/單元', '題型', '題目標題/簡述',
+    '完整題目文字', '學生作答思路', '標準正解/解析', '錯誤歸因標籤', '掌握度等級(1-3)', '掌握度標示',
+    '核心觀念盲點', '下次複習日期', '關聯考卷ID', '關聯考種(mock/term/quiz)'
+  ];
+  applyHeaderStyle(sheet, headers);
+}
+
+// 5. 目標高中欄位定義
 function setupTargetSheetHeader(sheet) {
   var headers = [
     'ID', '學校名稱', '簡稱', '所屬考區', '歷年錄取門檻(點)', '門檻積分', '目標標示', '各科目標設定', '備註'
@@ -208,7 +224,7 @@ function setupTargetSheetHeader(sheet) {
   applyHeaderStyle(sheet, headers);
 }
 
-// 5. 系統設定
+// 6. 系統設定
 function setupSettingSheetHeader(sheet) {
   var headers = ['設定鍵 (Key)', '設定值 (Value)', '最後更新時間'];
   applyHeaderStyle(sheet, headers);
@@ -222,7 +238,6 @@ function syncMockExamsSheet(items) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = getOrCreateSheet(ss, '模擬考會考專區');
   
-  // 保留第 1 列標題，清除舊資料
   var lastRow = sheet.getLastRow();
   if (lastRow > 1) {
     sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
@@ -239,7 +254,6 @@ function syncMockExamsSheet(items) {
     var sc = sub.SCIENCE || {};
     var wr = sub.WRITING || {};
     
-    // 計算總標示與積點 (以基北區為標準換算示例)
     var countA = 0, countB = 0, countC = 0, plus = 0, points = 0;
     [ch, en, ma, so, sc].forEach(function(s) {
       var not = s.notation || 'B';
@@ -372,6 +386,68 @@ function syncQuizzesSheet(items) {
   }
 }
 
+function syncMistakesSheet(items) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = getOrCreateSheet(ss, '錯題與盲點筆記');
+  
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
+  }
+  
+  if (!items || items.length === 0) return;
+  
+  var subNameMap = {
+    'CHINESE': '國文', 'ENGLISH': '英文', 'WRITING': '寫作',
+    'MATH': '數學', 'PHYS_CHEM': '理化', 'BIOLOGY': '生物', 'EARTH_SCI': '地科',
+    'GEOGRAPHY': '地理', 'HISTORY': '歷史', 'CIVICS': '公民'
+  };
+  var qTypeNameMap = {
+    'single_choice': '單一選擇題',
+    'reading_comprehension': '閱讀題組題',
+    'fill_in_blank': '填充題',
+    'math_non_choice': '數學非選計算/證明',
+    'short_answer': '簡答/申論題',
+    'chart_analysis': '圖表/實驗分析題',
+    'other': '其他綜合題型'
+  };
+  var masteryMap = {
+    1: '🔴 生疏 (24hr內重練)',
+    2: '🟡 複習中 (3天後重刷)',
+    3: '🟢 已熟練 (考前速覽)'
+  };
+  
+  var rows = items.map(function(item) {
+    var tags = Array.isArray(item.errorTags) ? item.errorTags.join(', ') : (item.errorTags || '');
+    var mLevel = item.masteryLevel || 1;
+    
+    return [
+      item.id || '',
+      item.date || '',
+      item.subject || '',
+      subNameMap[item.subject] || item.subject || '',
+      item.unitName || '',
+      qTypeNameMap[item.questionType] || item.questionType || '',
+      item.title || '',
+      item.questionText || '',
+      item.studentAnswer || '',
+      item.correctAnswer || '',
+      tags,
+      mLevel,
+      masteryMap[mLevel] || '🔴 生疏',
+      item.blindspot || '',
+      item.nextReviewDate || '',
+      item.examId || '',
+      item.examType || ''
+    ];
+  });
+  
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+    sheet.autoResizeColumns(1, rows[0].length);
+  }
+}
+
 function syncTargetSchoolsSheet(items) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = getOrCreateSheet(ss, '目標高中與志願');
@@ -437,37 +513,15 @@ function syncSettingsSheet(settings) {
 function fetchAllSheetsData() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var result = {
-    quizzes: [],
-    termExams: [],
     mockExams: [],
+    termExams: [],
+    quizzes: [],
+    mistakes: [],
     targetSchools: [],
     settings: {}
   };
   
-  // 1. 讀取小考
-  var quizSheet = ss.getSheetByName('小考評量紀錄');
-  if (quizSheet && quizSheet.getLastRow() > 1) {
-    var qValues = quizSheet.getRange(2, 1, quizSheet.getLastRow() - 1, 13).getValues();
-    result.quizzes = qValues.filter(function(r) {
-      return (r[0] !== '' || r[1] !== '' || r[4] !== '');
-    }).map(function(r, idx) {
-      return {
-        id: r[0] ? String(r[0]) : ('qz_' + new Date().getTime() + '_' + idx),
-        date: formatDate(r[1]) || new Date().toISOString().slice(0, 10),
-        subject: String(r[2] || 'CHINESE'),
-        unitName: String(r[4] || '單元測驗'),
-        quizType: String(r[5] || '隨堂測驗'),
-        score: (r[6] !== '' && !isNaN(r[6])) ? Number(r[6]) : 0,
-        maxScore: (r[7] !== '' && !isNaN(r[7])) ? Number(r[7]) : 100,
-        errorTags: r[9] ? String(r[9]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [],
-        correctionStatus: String(r[10] || 'corrected'),
-        blindspot: r[11] ? String(r[11]) : '',
-        notes: r[12] ? String(r[12]) : ''
-      };
-    });
-  }
-  
-  // 2. 讀取模考
+  // 1. 讀取模擬考 (26 欄)
   var mockSheet = ss.getSheetByName('模擬考會考專區');
   if (mockSheet && mockSheet.getLastRow() > 1) {
     var mValues = mockSheet.getRange(2, 1, mockSheet.getLastRow() - 1, 26).getValues();
@@ -502,7 +556,7 @@ function fetchAllSheetsData() {
     });
   }
   
-  // 3. 讀取定期段考 (完整 37 欄)
+  // 2. 讀取定期段考 (完整 37 欄)
   var termSheet = ss.getSheetByName('定期段考評量');
   if (termSheet && termSheet.getLastRow() > 1) {
     var tValues = termSheet.getRange(2, 1, termSheet.getLastRow() - 1, 37).getValues();
@@ -547,7 +601,58 @@ function fetchAllSheetsData() {
     });
   }
 
-  // 4. 讀取目標高中與志願 (完整 9 欄)
+  // 3. 讀取小考 (13 欄)
+  var quizSheet = ss.getSheetByName('小考評量紀錄');
+  if (quizSheet && quizSheet.getLastRow() > 1) {
+    var qValues = quizSheet.getRange(2, 1, quizSheet.getLastRow() - 1, 13).getValues();
+    result.quizzes = qValues.filter(function(r) {
+      return (r[0] !== '' || r[1] !== '' || r[4] !== '');
+    }).map(function(r, idx) {
+      return {
+        id: r[0] ? String(r[0]) : ('qz_' + new Date().getTime() + '_' + idx),
+        date: formatDate(r[1]) || new Date().toISOString().slice(0, 10),
+        subject: String(r[2] || 'CHINESE'),
+        unitName: String(r[4] || '單元測驗'),
+        quizType: String(r[5] || '隨堂測驗'),
+        score: (r[6] !== '' && !isNaN(r[6])) ? Number(r[6]) : 0,
+        maxScore: (r[7] !== '' && !isNaN(r[7])) ? Number(r[7]) : 100,
+        errorTags: r[9] ? String(r[9]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [],
+        correctionStatus: String(r[10] || 'corrected'),
+        blindspot: r[11] ? String(r[11]) : '',
+        notes: r[12] ? String(r[12]) : ''
+      };
+    });
+  }
+  
+  // 4. 讀取錯題與盲點筆記 (17 欄)
+  var mistakeSheet = ss.getSheetByName('錯題與盲點筆記');
+  if (mistakeSheet && mistakeSheet.getLastRow() > 1) {
+    var mkValues = mistakeSheet.getRange(2, 1, mistakeSheet.getLastRow() - 1, 17).getValues();
+    result.mistakes = mkValues.filter(function(r) {
+      return (r[0] !== '' || r[6] !== '' || r[7] !== '');
+    }).map(function(r, idx) {
+      var mLevel = (r[11] !== '' && !isNaN(r[11])) ? Number(r[11]) : 1;
+      return {
+        id: r[0] ? String(r[0]) : ('mk_' + new Date().getTime() + '_' + idx),
+        date: formatDate(r[1]) || new Date().toISOString().slice(0, 10),
+        subject: String(r[2] || 'CHINESE'),
+        unitName: String(r[4] || ''),
+        questionType: String(r[5] || 'single_choice'),
+        title: String(r[6] || ''),
+        questionText: String(r[7] || ''),
+        studentAnswer: String(r[8] || ''),
+        correctAnswer: String(r[9] || ''),
+        errorTags: r[10] ? String(r[10]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [],
+        masteryLevel: mLevel,
+        blindspot: String(r[13] || ''),
+        nextReviewDate: formatDate(r[14]) || new Date().toISOString().slice(0, 10),
+        examId: String(r[15] || ''),
+        examType: String(r[16] || '')
+      };
+    });
+  }
+
+  // 5. 讀取目標高中與志願 (完整 9 欄)
   var targetSheet = ss.getSheetByName('目標高中與志願');
   if (targetSheet && targetSheet.getLastRow() > 1) {
     var tgValues = targetSheet.getRange(2, 1, targetSheet.getLastRow() - 1, 9).getValues();
@@ -572,7 +677,7 @@ function fetchAllSheetsData() {
     });
   }
 
-  // 5. 讀取系統設定 (Key-Value 轉對象)
+  // 6. 讀取系統設定 (Key-Value 轉對象)
   var setSheet = ss.getSheetByName('系統設定與備份') || ss.getSheetByName('系統設定');
   if (setSheet && setSheet.getLastRow() > 1) {
     var sValues = setSheet.getRange(2, 1, setSheet.getLastRow() - 1, 2).getValues();
